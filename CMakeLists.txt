@@ -18,6 +18,11 @@ set(source_files
     model/logical-lora-channel-helper.cc
     model/periodic-sender.cc
     model/one-shot-sender.cc
+      model/ObjectCommApplication.cc
+      model/BulkSendApplication.cc
+      model/ObjectCommHeader.cc
+      model/buffered-forwarder.cc
+      helper/buffered-forwarder-helper.cc
     model/forwarder.cc
     model/lorawan-mac-header.cc
     model/lora-frame-header.cc
@@ -68,6 +73,11 @@ set(header_files
     model/logical-lora-channel-helper.h
     model/periodic-sender.h
     model/one-shot-sender.h
+      model/ObjectCommApplication.h
+      model/BulkSendApplication.h
+      model/ObjectCommHeader.h
+      model/buffered-forwarder.h
+      helper/buffered-forwarder-helper.h
     model/forwarder.h
     model/lorawan-mac-header.h
     model/lora-frame-header.h

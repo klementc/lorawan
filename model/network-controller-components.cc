@@ -18,6 +18,7 @@
  */
 
 #include "network-controller-components.h"
+#include "ns3/ObjectCommHeader.h"
 
 namespace ns3
 {
@@ -83,7 +84,10 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
     NS_LOG_INFO("Received packet Mac Header: " << mHdr);
     NS_LOG_INFO("Received packet Frame Header: " << fHdr);
 
-    if (mHdr.GetMType() == LorawanMacHeader::CONFIRMED_DATA_UP)
+    // if object broadcast request process it, otherwise keep classic ACK for confirmed packets
+    if (fHdr.GetFPort() == 13){
+        ProcessPacket(packet, status, networkStatus);
+    } else if (mHdr.GetMType() == LorawanMacHeader::CONFIRMED_DATA_UP)
     {
         NS_LOG_INFO("Packet requires confirmation");
 
@@ -93,6 +97,7 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
         status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
         status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
         status->m_reply.needsReply = true;
+        status->m_reply.payload = Create<Packet>(230);
 
         // Note that the acknowledgment procedure dies here: "Acknowledgments
         // are only snt in response to the latest message received and are never
@@ -101,7 +106,55 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
         // emptied in case transmission cannot be performed in the current
         // window. Because of this, in this component's OnFailedReply method we
         // void the ack bits.
+
     }
+}
+
+void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
+                                             Ptr<EndDeviceStatus> status,
+                                             Ptr<NetworkStatus> networkStatus)
+{
+    NS_LOG_FUNCTION(this->GetTypeId() << packet << networkStatus);
+
+    LorawanMacHeader mHdr;
+    LoraFrameHeader fHdr;
+    ObjectCommHeader oHdr;
+
+    fHdr.SetAsUplink();
+    Ptr<Packet> myPacket = packet->Copy();
+    myPacket->RemoveHeader(mHdr);
+    myPacket->RemoveHeader(fHdr);
+    myPacket->RemoveHeader(oHdr);
+
+    // create pool if needed
+    NS_LOG_INFO("Request for object ID: "<< (uint64_t)oHdr.GetObjID());
+
+    int nbPacketsToSend = 1;
+    for(int i=0;i<nbPacketsToSend;i++) {
+        status->m_reply.frameHeader.SetAsDownlink();
+        status->m_reply.frameHeader.SetAck(false);
+        status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
+        status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
+        status->m_reply.needsReply = true;
+        //status->m_reply.payload = Create<Packet>(230);
+        Ptr<Packet> dataPacket = networkStatus->GetReplyForDevice(fHdr.GetAddress(), 1);
+
+        // check if need to ACK or not
+        auto gw = networkStatus->GetBestGatewayForDevice(fHdr.GetAddress(), 1);
+        NS_LOG_INFO("USING GW "<<gw << " for dev "<< fHdr.GetAddress());
+        if (gw == Address()) {
+            Simulator::Schedule(Seconds(1),
+                &ConfirmedMessagesComponent::ProcessPacket,
+                this,
+                packet, status, networkStatus); // This will be the second receive window
+        } else {
+            networkStatus->SendThroughGateway(dataPacket, networkStatus->GetBestGatewayForDevice(fHdr.GetAddress(), 1));
+        }
+    }
+    // add info to pool
+
+    // if ready to send, schedule future downlink transmissions
+
 }
 
 void

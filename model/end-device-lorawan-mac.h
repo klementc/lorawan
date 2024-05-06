@@ -222,6 +222,13 @@ class EndDeviceLorawanMac : public LorawanMac
     /////////////////////////
 
     /**
+     * Set the value of the fPort to use when sending the packets from now on
+     *
+     * \param port The fPort to use
+    */
+   void SetFPort(uint8_t port);
+
+    /**
      * Add the necessary options and MAC commands to the LoraFrameHeader.
      *
      * \param frameHeader The frame header on which to apply the options.
@@ -520,6 +527,11 @@ class EndDeviceLorawanMac : public LorawanMac
      * current value of the device frame counter.
      */
     uint16_t m_currentFCnt;
+
+    /**
+     * FPort to use, 1 by default
+    */
+   uint8_t m_fPort;
 };
 
 } // namespace lorawan

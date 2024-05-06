@@ -126,7 +126,8 @@ EndDeviceLorawanMac::EndDeviceLorawanMac()
       m_lastKnownGatewayCount(0),
       m_aggregatedDutyCycle(1),
       m_mType(LorawanMacHeader::CONFIRMED_DATA_UP),
-      m_currentFCnt(0)
+      m_currentFCnt(0),
+      m_fPort(1)
 {
     NS_LOG_FUNCTION(this);
 
@@ -166,7 +167,6 @@ EndDeviceLorawanMac::Send(Ptr<Packet> packet)
         postponeTransmission(netxTxDelay, packet);
         return;
     }
-
     // Pick a channel on which to transmit the packet
     Ptr<LogicalLoraChannel> txChannel = GetChannelForTx();
 
@@ -477,7 +477,7 @@ EndDeviceLorawanMac::ApplyNecessaryOptions(LoraFrameHeader& frameHeader)
     NS_LOG_FUNCTION_NOARGS();
 
     frameHeader.SetAsUplink();
-    frameHeader.SetFPort(1); // TODO Use an appropriate frame port based on the application
+    frameHeader.SetFPort(m_fPort);
     frameHeader.SetAddress(m_address);
     frameHeader.SetAdr(m_controlDataRate);
     frameHeader.SetAdrAckReq(false); // TODO Set ADRACKREQ if a member variable is true
@@ -494,6 +494,14 @@ EndDeviceLorawanMac::ApplyNecessaryOptions(LoraFrameHeader& frameHeader)
         frameHeader.AddCommand(command);
     }
 }
+
+void
+EndDeviceLorawanMac::SetFPort(uint8_t port)
+{
+    NS_LOG_FUNCTION(port);
+    m_fPort = port;
+}
+
 
 void
 EndDeviceLorawanMac::ApplyNecessaryOptions(LorawanMacHeader& macHeader)

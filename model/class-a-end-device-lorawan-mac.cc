@@ -154,6 +154,7 @@ ClassAEndDeviceLorawanMac::Receive(Ptr<const Packet> packet)
 
     NS_LOG_DEBUG("Mac Header: " << mHdr);
 
+    m_phy->GetObject<EndDeviceLoraPhy>()->SwitchToSleep();
     // Only keep analyzing the packet if it's downlink
     if (!mHdr.IsUplink())
     {
@@ -239,7 +240,6 @@ ClassAEndDeviceLorawanMac::Receive(Ptr<const Packet> packet)
         }
     }
 
-    m_phy->GetObject<EndDeviceLoraPhy>()->SwitchToSleep();
 }
 
 void

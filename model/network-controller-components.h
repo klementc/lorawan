@@ -115,6 +115,10 @@ class ConfirmedMessagesComponent : public NetworkControllerComponent
                           Ptr<EndDeviceStatus> status,
                           Ptr<NetworkStatus> networkStatus) override;
 
+    void ProcessPacket(Ptr<const Packet> packet,
+                                             Ptr<EndDeviceStatus> status,
+                                             Ptr<NetworkStatus> networkStatus);
+
     void BeforeSendingReply(Ptr<EndDeviceStatus> status, Ptr<NetworkStatus> networkStatus) override;
 
     void OnFailedReply(Ptr<EndDeviceStatus> status, Ptr<NetworkStatus> networkStatus) override;

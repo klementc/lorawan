@@ -83,7 +83,7 @@ class Forwarder : public Application
      *
      * \copydoc ns3::NetDevice::ReceiveCallback
      */
-    bool ReceiveFromPointToPoint(Ptr<NetDevice> device,
+    virtual bool ReceiveFromPointToPoint(Ptr<NetDevice> device,
                                  Ptr<const Packet> packet,
                                  uint16_t protocol,
                                  const Address& sender);
@@ -98,7 +98,7 @@ class Forwarder : public Application
      */
     void StopApplication() override;
 
-  private:
+  protected:
     Ptr<LoraNetDevice> m_loraNetDevice; //!< Pointer to the node's LoraNetDevice
 
     Ptr<PointToPointNetDevice> m_pointToPointNetDevice; //!< Pointer to the P2PNetDevice we use to
