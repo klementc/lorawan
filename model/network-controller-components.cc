@@ -97,7 +97,7 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
         status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
         status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
         status->m_reply.needsReply = true;
-        status->m_reply.payload = Create<Packet>(230);
+        status->m_reply.payload = Create<Packet>(0);
 
         // Note that the acknowledgment procedure dies here: "Acknowledgments
         // are only snt in response to the latest message received and are never
@@ -138,6 +138,12 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
         status->m_reply.needsReply = true;
         //status->m_reply.payload = Create<Packet>(230);
         Ptr<Packet> dataPacket = networkStatus->GetReplyForDevice(fHdr.GetAddress(), 1);
+        dataPacket->RemoveHeader(mHdr);
+        dataPacket->RemoveHeader(fHdr);
+        dataPacket->AddHeader(oHdr);
+        dataPacket->AddHeader(fHdr);
+        dataPacket->AddHeader(mHdr);
+
 
         // check if need to ACK or not
         auto gw = networkStatus->GetBestGatewayForDevice(fHdr.GetAddress(), 1);
@@ -148,7 +154,9 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
                 this,
                 packet, status, networkStatus); // This will be the second receive window
         } else {
-            networkStatus->SendThroughGateway(dataPacket, networkStatus->GetBestGatewayForDevice(fHdr.GetAddress(), 1));
+            Simulator::Schedule(Seconds(10),
+                &NetworkStatus::SendThroughGateway, networkStatus, dataPacket, networkStatus->GetBestGatewayForDevice(fHdr.GetAddress(), 1));
+            //networkStatus->SendThroughGateway(dataPacket, networkStatus->GetBestGatewayForDevice(fHdr.GetAddress(), 1));
         }
     }
     // add info to pool

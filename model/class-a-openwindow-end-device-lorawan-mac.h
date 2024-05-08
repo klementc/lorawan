@@ -23,14 +23,14 @@
 #ifndef CLASS_A_OPENWINDOW_END_DEVICE_LORAWAN_MAC_H
 #define CLASS_A_OPENWINDOW_END_DEVICE_LORAWAN_MAC_H
 
+#include "lorawan-mac.h"
 #include "end-device-lorawan-mac.h" // EndDeviceLorawanMac
 #include "lora-frame-header.h"      // RxParamSetupReq
 #include "lorawan-mac.h"            // Packet
-// #include "ns3/random-variable-stream.h"
 #include "lora-device-address.h"
 #include "class-a-end-device-lorawan-mac.h"
 
-// #include "ns3/traced-value.h"
+#include "ns3/traced-value.h"
 
 namespace ns3
 {
@@ -57,7 +57,7 @@ class ClassAOpenWindowEndDeviceLorawanMac : public ClassAEndDeviceLorawanMac
     //////////////////////////
     //  Receiving methods   //
     //////////////////////////
-    void openFreeReceiveWindow(double, uint8_t);
+    void openFreeReceiveWindow(double frequency, uint8_t spreadingFactor);
     void closeFreeReceiveWindow();
 
   private:

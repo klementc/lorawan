@@ -21,6 +21,7 @@
 #define LORAWAN_MAC_HELPER_H
 
 #include "ns3/class-a-end-device-lorawan-mac.h"
+#include "ns3/class-a-openwindow-end-device-lorawan-mac.h"
 #include "ns3/gateway-lorawan-mac.h"
 #include "ns3/lora-channel.h"
 #include "ns3/lora-device-address-generator.h"
@@ -50,7 +51,8 @@ class LorawanMacHelper
     enum DeviceType
     {
         GW,
-        ED_A
+        ED_A,
+        ED_A_OPEN
     };
 
     /**

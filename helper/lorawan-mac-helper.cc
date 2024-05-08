@@ -55,6 +55,9 @@ LorawanMacHelper::SetDeviceType(enum DeviceType dt)
     case ED_A:
         m_mac.SetTypeId("ns3::ClassAEndDeviceLorawanMac");
         break;
+    case ED_A_OPEN:
+        m_mac.SetTypeId("ns3::ClassAOpenWindowEndDeviceLorawanMac");
+        break;
     }
     m_deviceType = dt;
 }
@@ -80,14 +83,14 @@ LorawanMacHelper::Create(Ptr<Node> node, Ptr<NetDevice> device) const
     mac->SetDevice(device);
 
     // If we are operating on an end device, add an address to it
-    if (m_deviceType == ED_A && m_addrGen)
+    if ((m_deviceType == ED_A || m_deviceType == ED_A_OPEN) && m_addrGen)
     {
         mac->GetObject<ClassAEndDeviceLorawanMac>()->SetDeviceAddress(m_addrGen->NextAddress());
     }
 
     // Add a basic list of channels based on the region where the device is
     // operating
-    if (m_deviceType == ED_A)
+    if (m_deviceType == ED_A || m_deviceType == ED_A_OPEN)
     {
         Ptr<ClassAEndDeviceLorawanMac> edMac = mac->GetObject<ClassAEndDeviceLorawanMac>();
         switch (m_region)

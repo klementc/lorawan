@@ -1,6 +1,6 @@
-#include "ObjectCommApplication.h"
+#include "ObjectCommApplication-multicast.h"
 
-#include "class-a-end-device-lorawan-mac.h"
+#include "class-a-openwindow-end-device-lorawan-mac.h"
 #include "lora-net-device.h"
 
 #include "ns3/double.h"
@@ -14,32 +14,31 @@ namespace ns3
 namespace lorawan
 {
 
-NS_LOG_COMPONENT_DEFINE("ObjectCommApplication");
+NS_LOG_COMPONENT_DEFINE("ObjectCommApplicationMulticast");
 
-NS_OBJECT_ENSURE_REGISTERED(ObjectCommApplication);
+NS_OBJECT_ENSURE_REGISTERED(ObjectCommApplicationMulticast);
 
 TypeId
-ObjectCommApplication::GetTypeId()
+ObjectCommApplicationMulticast::GetTypeId()
 {
-    static TypeId tid = TypeId("ns3::ObjectCommApplication")
+    static TypeId tid = TypeId("ns3::ObjectCommApplicationMulticast")
                             .SetParent<Application>()
-                            .AddConstructor<ObjectCommApplication>()
+                            .AddConstructor<ObjectCommApplicationMulticast>()
                             .SetGroupName("lorawan");
     return tid;
 }
 
-ObjectCommApplication::ObjectCommApplication()
+ObjectCommApplicationMulticast::ObjectCommApplicationMulticast()
 {
     NS_LOG_FUNCTION_NOARGS();
-    m_requestSize = 5;
     m_rng = CreateObject<UniformRandomVariable>();
 }
 
-static void callSend(Ptr<ObjectCommApplication> app) {
+static void callSend(Ptr<ObjectCommApplicationMulticast> app) {
     app->SendRequest();
 }
 
-void ObjectCommApplication::callbackCheckEndTx(std::string context, uint8_t reqTx, bool success, Time firstAttempt, Ptr<Packet> packet) {
+void ObjectCommApplicationMulticast::callbackCheckEndTx(std::string context, uint8_t reqTx, bool success, Time firstAttempt, Ptr<Packet> packet) {
     ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
     ns3::lorawan::LorawanMacHeader mHdr;
     packetCopy->RemoveHeader(mHdr);
@@ -53,7 +52,7 @@ void ObjectCommApplication::callbackCheckEndTx(std::string context, uint8_t reqT
         Simulator::Schedule(Seconds(m_rng->GetInteger(30,60)), &callSend, this);
 }
 
-void ObjectCommApplication::callbackReception(std::string context, Ptr<Packet const> packet) {
+void ObjectCommApplicationMulticast::callbackReception(std::string context, Ptr<Packet const> packet) {
     // check is ack with data, add to counter and send new packet
     ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
     ns3::lorawan::LorawanMacHeader mHdr;
@@ -63,27 +62,29 @@ void ObjectCommApplication::callbackReception(std::string context, Ptr<Packet co
 
     setReceivedTotal(getReceivedTotal()+packetCopy->GetSize());
     NS_LOG_UNCOND("Received ACK with data payload of size " << packetCopy->GetSize() << " Current total data received: " << getReceivedTotal());
-    // send a new request if the object is not entirely received
-    if (getReceivedTotal() < m_objectSize)
-        SendRequest();
+    // open window for future reception or finish
+    if (getReceivedTotal()<m_objectSize) {
+        NS_LOG_INFO("Not all data received, open free window");
+        double frequency = 868.5;
+        uint8_t sf = 5;
+        m_mac->openFreeReceiveWindow(frequency, sf);
+    } else {
+        NS_LOG_INFO("All data received, stopping now");
+    }
 }
 
-uint64_t ObjectCommApplication::getReceivedTotal() {
+uint64_t ObjectCommApplicationMulticast::getReceivedTotal() {
     return m_currentReceived;
 }
 
-void ObjectCommApplication::setReceivedTotal(uint64_t amount) {
+void ObjectCommApplicationMulticast::setReceivedTotal(uint64_t amount) {
     m_currentReceived = amount;
 }
 
-void ObjectCommApplication::SendRequest()
+void ObjectCommApplicationMulticast::SendRequest()
 {
     NS_LOG_FUNCTION(this);
 
-    /** Create and send a new packet
-     * structure of the packet: |headers|payload|
-     * |payload| = |objID:uint8_t|
-    */
     Ptr<Packet> packet = Create<Packet>(0);
     ObjectCommHeader objHeader;
     objHeader.SetObjID(42);
@@ -92,7 +93,7 @@ void ObjectCommApplication::SendRequest()
     m_mac->Send(packet);
 }
 
-void ObjectCommApplication::StartApplication()
+void ObjectCommApplicationMulticast::StartApplication()
 {
     NS_LOG_FUNCTION_NOARGS();
 
@@ -102,25 +103,25 @@ void ObjectCommApplication::StartApplication()
         // Assumes there's only one device
         Ptr<LoraNetDevice> loraNetDevice = m_node->GetDevice(0)->GetObject<LoraNetDevice>();
 
-        m_mac = loraNetDevice->GetMac();
-        m_mac->GetObject<EndDeviceLorawanMac>()->SetFPort(1);
+        m_mac = loraNetDevice->GetMac()->GetObject<ClassAOpenWindowEndDeviceLorawanMac>();
+        m_mac->SetFPort(13);
         NS_ASSERT(m_mac);
     }
 
     m_currentReceived = 0;
-    m_mac->TraceConnect("ReceivedPacket", "Received data", MakeCallback(&ObjectCommApplication::callbackReception, this));
-    m_mac->TraceConnect("RequiredTransmissions", "Failed or not", MakeCallback(&ObjectCommApplication::callbackCheckEndTx, this));
+    m_mac->TraceConnect("ReceivedPacket", "Received data", MakeCallback(&ObjectCommApplicationMulticast::callbackReception, this));
+    m_mac->TraceConnect("RequiredTransmissions", "Failed or not", MakeCallback(&ObjectCommApplicationMulticast::callbackCheckEndTx, this));
     // ask for the first fragment
     SendRequest();
 }
 
-void ObjectCommApplication::StopApplication()
+void ObjectCommApplicationMulticast::StopApplication()
 {
     NS_LOG_FUNCTION_NOARGS();
     // log how much was sent, received etc
 }
 
-void ObjectCommApplication::SetObjectSize(uint64_t size) {
+void ObjectCommApplicationMulticast::SetObjectSize(uint64_t size) {
     m_objectSize = size;
 }
 

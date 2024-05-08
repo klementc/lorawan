@@ -5,11 +5,38 @@
 
 #include "ns3/log.h"
 
+#include <algorithm>
 
 namespace ns3
 {
 namespace lorawan
 {
+
+NS_LOG_COMPONENT_DEFINE("ClassAOpenWindowEndDeviceLorawanMac");
+
+NS_OBJECT_ENSURE_REGISTERED(ClassAOpenWindowEndDeviceLorawanMac);
+
+TypeId
+ClassAOpenWindowEndDeviceLorawanMac::GetTypeId()
+{
+    static TypeId tid = TypeId("ns3::ClassAOpenWindowEndDeviceLorawanMac")
+                            .SetParent<ClassAEndDeviceLorawanMac>()
+                            .SetGroupName("lorawan")
+                            .AddConstructor<ClassAOpenWindowEndDeviceLorawanMac>();
+    return tid;
+}
+
+ClassAOpenWindowEndDeviceLorawanMac::ClassAOpenWindowEndDeviceLorawanMac()
+    : ClassAEndDeviceLorawanMac()
+{
+    NS_LOG_FUNCTION(this);
+}
+
+ClassAOpenWindowEndDeviceLorawanMac::~ClassAOpenWindowEndDeviceLorawanMac()
+{
+    NS_LOG_FUNCTION_NOARGS();
+}
+
 void ClassAOpenWindowEndDeviceLorawanMac::openFreeReceiveWindow(double frequency, uint8_t spreadingFactor) {
   NS_LOG_FUNCTION_NOARGS();
     // Set Phy in Standby mode
@@ -41,7 +68,7 @@ void ClassAOpenWindowEndDeviceLorawanMac::closeFreeReceiveWindow() {
       break;
   case EndDeviceLoraPhy::RX:
       // PHY is receiving: let it finish
-      NS_LOG_DEBUG("PHY is receiving: Receive will handle the result.");
+      //NS_LOG_INFO("PHY is receiving: Receive will handle the result.");
       return;
   case EndDeviceLoraPhy::STANDBY:
       // Turn PHY layer to sleep
