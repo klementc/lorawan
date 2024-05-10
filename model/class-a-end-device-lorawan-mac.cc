@@ -168,7 +168,7 @@ ClassAEndDeviceLorawanMac::Receive(Ptr<const Packet> packet)
         NS_LOG_DEBUG("Frame Header: " << fHdr);
 
         // Determine whether this packet is for us
-        bool messageForUs = (m_address == fHdr.GetAddress());
+        bool messageForUs = (m_address == fHdr.GetAddress() || LoraDeviceAddress(0,0) == fHdr.GetAddress());
 
         if (messageForUs)
         {

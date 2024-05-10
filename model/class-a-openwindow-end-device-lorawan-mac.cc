@@ -38,13 +38,12 @@ ClassAOpenWindowEndDeviceLorawanMac::~ClassAOpenWindowEndDeviceLorawanMac()
 }
 
 void ClassAOpenWindowEndDeviceLorawanMac::openFreeReceiveWindow(double frequency, uint8_t spreadingFactor) {
-  NS_LOG_FUNCTION_NOARGS();
+    NS_LOG_FUNCTION(frequency << spreadingFactor);
     // Set Phy in Standby mode
     m_phy->GetObject<EndDeviceLoraPhy>()->SwitchToStandby();
 
     m_phy->GetObject<EndDeviceLoraPhy>()->SetFrequency(frequency);
-    m_phy->GetObject<EndDeviceLoraPhy>()->SetSpreadingFactor(
-        GetSfFromDataRate(spreadingFactor));
+    m_phy->GetObject<EndDeviceLoraPhy>()->SetSpreadingFactor(spreadingFactor);
 
     // for now just stay in standby until further notice. TODO: compute when to close it in case there was a problem
 }

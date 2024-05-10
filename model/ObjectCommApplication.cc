@@ -62,7 +62,7 @@ void ObjectCommApplication::callbackReception(std::string context, Ptr<Packet co
     packetCopy->RemoveHeader(fHdr);
 
     setReceivedTotal(getReceivedTotal()+packetCopy->GetSize());
-    NS_LOG_UNCOND("Received ACK with data payload of size " << packetCopy->GetSize() << " Current total data received: " << getReceivedTotal());
+    NS_LOG_DEBUG("Received ACK on "<< fHdr.GetAddress()<< " with data payload of size " << packetCopy->GetSize() << " Current total data received: " << getReceivedTotal());
     // send a new request if the object is not entirely received
     if (getReceivedTotal() < m_objectSize)
         SendRequest();

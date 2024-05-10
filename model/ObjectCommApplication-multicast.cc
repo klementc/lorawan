@@ -48,8 +48,9 @@ void ObjectCommApplicationMulticast::callbackCheckEndTx(std::string context, uin
     NS_LOG_DEBUG("Finished Tx, device: "<<fHdr.GetAddress()<<" success: "<<success<< " total: "<<m_currentReceived<<" first attempt: "<<firstAttempt<<" fcnt: "<<fHdr.GetFCnt());
 
     // if failure, retry later? need to chose an application delay for that, maybe keeping it low like between 30 sec and 1 min randomly
-    if(success == false)
-        Simulator::Schedule(Seconds(m_rng->GetInteger(30,60)), &callSend, this);
+    if(success == false) {
+        Simulator::Schedule(Seconds(m_rng->GetInteger(10, 50)), &callSend, this);
+    }
 }
 
 void ObjectCommApplicationMulticast::callbackReception(std::string context, Ptr<Packet const> packet) {
@@ -59,17 +60,31 @@ void ObjectCommApplicationMulticast::callbackReception(std::string context, Ptr<
     packetCopy->RemoveHeader(mHdr);
     ns3::lorawan::LoraFrameHeader fHdr;
     packetCopy->RemoveHeader(fHdr);
+    ObjectCommHeader oHdr;
+    packetCopy->RemoveHeader(oHdr);
+    std::ostringstream oss;
+    oHdr.Print(oss);
 
     setReceivedTotal(getReceivedTotal()+packetCopy->GetSize());
-    NS_LOG_UNCOND("Received ACK with data payload of size " << packetCopy->GetSize() << " Current total data received: " << getReceivedTotal());
+    NS_LOG_DEBUG("Received ACK on "<< m_mac->GetDeviceAddress());
+    //NS_LOG_INFO("Received ACK with data payload of size " << packetCopy->GetSize() << " Current total data received: " << getReceivedTotal());
+    //NS_LOG_INFO("objpacket: "<<oss.str().c_str());
+
     // open window for future reception or finish
     if (getReceivedTotal()<m_objectSize) {
-        NS_LOG_INFO("Not all data received, open free window");
-        double frequency = 868.5;
-        uint8_t sf = 5;
-        m_mac->openFreeReceiveWindow(frequency, sf);
+        bool isFirst = getReceivedTotal()==0 ? true : false;
+        NS_LOG_INFO("Received " << getReceivedTotal() << "/" << m_objectSize << " bytes: open free window isFirst: "<<isFirst);
+        double frequency = ObjectCommHeader::GetFrequencyFromIndex(oHdr.GetFreq());
+        uint8_t sf = oHdr.GetSF();
+        if(isFirst) {
+            NS_LOG_INFO("WINDOW time:" <<Seconds(oHdr.GetDelay()*10));
+            Simulator::Schedule(Seconds((uint64_t)oHdr.GetDelay()*10),
+                &ClassAOpenWindowEndDeviceLorawanMac::openFreeReceiveWindow, m_mac, frequency, sf);
+        } else
+            m_mac->openFreeReceiveWindow(frequency, sf);
     } else {
-        NS_LOG_INFO("All data received, stopping now");
+        NS_LOG_INFO("Received " << getReceivedTotal()  << "/" << m_objectSize << " bytes: stopping now");
+        m_mac->closeFreeReceiveWindow();
     }
 }
 
@@ -84,12 +99,13 @@ void ObjectCommApplicationMulticast::setReceivedTotal(uint64_t amount) {
 void ObjectCommApplicationMulticast::SendRequest()
 {
     NS_LOG_FUNCTION(this);
+    m_mac->SetMaxNumberOfTransmissions(1);
 
     Ptr<Packet> packet = Create<Packet>(0);
     ObjectCommHeader objHeader;
     objHeader.SetObjID(42);
     packet->AddHeader(objHeader);
-    NS_LOG_INFO("PACKET SEND WITH OBJEID: "<<(uint64_t) objHeader.GetObjID());
+    NS_LOG_INFO("PACKET SEND WITH OBJID: "<<(uint64_t) objHeader.GetObjID());
     m_mac->Send(packet);
 }
 

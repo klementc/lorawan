@@ -97,6 +97,7 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
         status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
         status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
         status->m_reply.needsReply = true;
+        //status->m_reply.payload = Create<Packet>(230);
         status->m_reply.payload = Create<Packet>(0);
 
         // Note that the acknowledgment procedure dies here: "Acknowledgments
@@ -106,63 +107,117 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
         // emptied in case transmission cannot be performed in the current
         // window. Because of this, in this component's OnFailedReply method we
         // void the ack bits.
-
     }
 }
 
+static bool alreadySent = false;
+double freq = 0;
+uint8_t sf = 0;
+double emitTime = 0;
 void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
                                              Ptr<EndDeviceStatus> status,
                                              Ptr<NetworkStatus> networkStatus)
 {
+
     NS_LOG_FUNCTION(this->GetTypeId() << packet << networkStatus);
 
     LorawanMacHeader mHdr;
     LoraFrameHeader fHdr;
     ObjectCommHeader oHdr;
+    LoraTag tag;
 
-    fHdr.SetAsUplink();
     Ptr<Packet> myPacket = packet->Copy();
     myPacket->RemoveHeader(mHdr);
     myPacket->RemoveHeader(fHdr);
     myPacket->RemoveHeader(oHdr);
+    myPacket->RemovePacketTag(tag);
+    auto devAddr = fHdr.GetAddress();
 
-    // create pool if needed
-    NS_LOG_INFO("Request for object ID: "<< (uint64_t)oHdr.GetObjID());
+    // TODO: use packet info to initialize and send ACK only if it is time to do it
 
-    int nbPacketsToSend = 1;
+    status->m_reply.frameHeader.SetAsDownlink();
+    status->m_reply.frameHeader.SetAck(true);
+    status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
+    status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
+    status->m_reply.needsReply = true;
+    auto retPL = Create<Packet>(0);
+
+    if (! alreadySent) {
+        //take freq and sf from LoRa tag
+        freq = tag.GetFrequency();
+        NS_LOG_INFO("freq: "<<tag.GetFrequency()<<" header index: "<< ObjectCommHeader::GetFrequencyIndex(freq));
+        sf = tag.GetSpreadingFactor();
+        emitTime = (Simulator::Now()+Seconds(1000)).GetSeconds();
+    }
+    oHdr.SetType(1); // DL ACK type
+    oHdr.SetFreq(ObjectCommHeader::GetFrequencyIndex(freq));
+    oHdr.SetSF(sf);
+
+    uint8_t nbTicks = (uint8_t)(floor((Seconds(emitTime)-Simulator::Now()).GetSeconds()/10))-1;
+    NS_LOG_INFO("NB TICKS: "<<emitTime<<" "<<(floor(((Seconds(emitTime)-Simulator::Now()).GetSeconds())/10)));
+    oHdr.SetDelay(nbTicks);
+
+    retPL->AddHeader(oHdr);
+    status->m_reply.payload = retPL;
+
+    NS_LOG_INFO("Request for object ID: "<< (uint64_t)oHdr.GetObjID()<< " already sent: "<<alreadySent);
+    if(! alreadySent) {
+        EmitObject(networkStatus->GetReplyForDevice(devAddr, 1), networkStatus);
+        alreadySent = true;
+    }
+}
+
+void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<NetworkStatus> networkStatus)
+{
+    NS_LOG_INFO("CALL TO EMIT");
+    LorawanMacHeader mHdr;
+    LoraFrameHeader fHdr;
+    ObjectCommHeader oHdr;
+    LoraTag tag;
+
+    Ptr<Packet> pcktdata = packetTemplate->Copy();
+    pcktdata->RemoveHeader(mHdr);
+    pcktdata->RemoveHeader(fHdr);
+    pcktdata->RemovePacketTag(tag);
+    auto gwToUse = networkStatus->GetBestGatewayForDevice(fHdr.GetAddress(), 1);
+    fHdr.SetAddress(LoraDeviceAddress(0,0));
+
+    // check if need to ACK or not
+    NS_LOG_INFO("USING GW "<<gwToUse << " for dev "<< fHdr.GetAddress());
+    if (gwToUse == Address()) {
+        NS_LOG_INFO("Schedule emit after 1 more second");
+        Simulator::Schedule(Seconds(1),
+            &ConfirmedMessagesComponent::EmitObject,
+            this,
+            packetTemplate, networkStatus);
+        return;
+    }
+
+    int nbPacketsToSend = 3;
     for(int i=0;i<nbPacketsToSend;i++) {
-        status->m_reply.frameHeader.SetAsDownlink();
-        status->m_reply.frameHeader.SetAck(false);
-        status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
-        status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
-        status->m_reply.needsReply = true;
-        //status->m_reply.payload = Create<Packet>(230);
-        Ptr<Packet> dataPacket = networkStatus->GetReplyForDevice(fHdr.GetAddress(), 1);
-        dataPacket->RemoveHeader(mHdr);
-        dataPacket->RemoveHeader(fHdr);
-        dataPacket->AddHeader(oHdr);
-        dataPacket->AddHeader(fHdr);
-        dataPacket->AddHeader(mHdr);
+        NS_LOG_INFO("Schedule SendThroughGW after " << emitTime << " seconds");
+        NS_LOG_INFO("ADDR: "<< fHdr.GetAddress());
 
+        oHdr.SetType(2);
+        oHdr.SetFreq(oHdr.GetFrequencyIndex(freq));
+        oHdr.SetSF(sf);
 
-        // check if need to ACK or not
-        auto gw = networkStatus->GetBestGatewayForDevice(fHdr.GetAddress(), 1);
-        NS_LOG_INFO("USING GW "<<gw << " for dev "<< fHdr.GetAddress());
-        if (gw == Address()) {
-            Simulator::Schedule(Seconds(1),
-                &ConfirmedMessagesComponent::ProcessPacket,
-                this,
-                packet, status, networkStatus); // This will be the second receive window
-        } else {
-            Simulator::Schedule(Seconds(10),
-                &NetworkStatus::SendThroughGateway, networkStatus, dataPacket, networkStatus->GetBestGatewayForDevice(fHdr.GetAddress(), 1));
-            //networkStatus->SendThroughGateway(dataPacket, networkStatus->GetBestGatewayForDevice(fHdr.GetAddress(), 1));
-        }
+        Ptr<Packet> pktPayload = Create<Packet>(200);
+        pktPayload->AddHeader(oHdr);
+        pktPayload->AddHeader(fHdr);
+        pktPayload->AddHeader(mHdr);
+        //tag.SetDataRate(5);
+        tag.SetSpreadingFactor(sf);
+        tag.SetFrequency(freq);
+        pktPayload->AddPacketTag(tag);
+
+        Simulator::Schedule(Seconds(emitTime)-Simulator::Now(),
+            &NetworkStatus::SendThroughGateway, networkStatus, pktPayload, gwToUse);
+        //networkStatus->SendThroughGateway(dataPacket, networkStatus->GetBestGatewayForDevice(fHdr.GetAddress(), 1));
     }
     // add info to pool
 
     // if ready to send, schedule future downlink transmissions
-
 }
 
 void

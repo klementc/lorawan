@@ -23,6 +23,8 @@ set(source_files
       model/ObjectCommHeader.cc
       model/buffered-forwarder.cc
       helper/buffered-forwarder-helper.cc
+      model/class-a-openwindow-end-device-lorawan-mac.cc
+      model/ObjectCommApplication-multicast.cc
     model/forwarder.cc
     model/lorawan-mac-header.cc
     model/lora-frame-header.cc
@@ -78,6 +80,8 @@ set(header_files
       model/ObjectCommHeader.h
       model/buffered-forwarder.h
       helper/buffered-forwarder-helper.h
+      model/class-a-openwindow-end-device-lorawan-mac.h
+      model/ObjectCommApplication-multicast.h
     model/forwarder.h
     model/lorawan-mac-header.h
     model/lora-frame-header.h

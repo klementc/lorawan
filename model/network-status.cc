@@ -194,7 +194,7 @@ NetworkStatus::GetReplyForDevice(LoraDeviceAddress edAddress, int windowNumber)
         tag.SetFrequency(edStatus->GetSecondReceiveWindowFrequency());
         break;
     }
-
+    NS_LOG_INFO("parameters Datarate: "<<tag.GetDataRate()<<" frequency: "<<tag.GetFrequency());
     packet->AddPacketTag(tag);
     return packet;
 }
