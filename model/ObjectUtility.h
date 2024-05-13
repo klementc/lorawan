@@ -1,0 +1,6 @@
+#ifndef OBJECT_UTILITY_H
+#define OBJECT_UTILITY_H
+
+int OBJECT_SIZE_BYTES = 0;
+
+#endif

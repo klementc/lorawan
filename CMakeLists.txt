@@ -82,6 +82,7 @@ set(header_files
       helper/buffered-forwarder-helper.h
       model/class-a-openwindow-end-device-lorawan-mac.h
       model/ObjectCommApplication-multicast.h
+      model/ObjectUtility.h
     model/forwarder.h
     model/lorawan-mac-header.h
     model/lora-frame-header.h

@@ -56,17 +56,17 @@ ObjectCommHeader::SetFreq(uint8_t freq)
 }
 
 void
-ObjectCommHeader::SetSF(uint8_t sf)
+ObjectCommHeader::SetDR(uint8_t dr)
 {
-    NS_LOG_FUNCTION(sf);
-    m_sf = sf;
+    NS_LOG_FUNCTION(dr);
+    m_dr = dr;
 }
 
 void
 ObjectCommHeader::Print(std::ostream& os) const
 {
     os << "Object comm header size:" << GetSerializedSize() << " object ID: " << (uint64_t)m_objID <<
-        " msg type: " << (uint64_t)m_type << " freq: " << (uint64_t)m_freq << " SF: " << (uint64_t)m_sf <<
+        " msg type: " << (uint64_t)m_type << " freq: " << (uint64_t)m_freq << " DR: " << (uint64_t)m_dr <<
         " delay: " << (uint64_t)m_delay;
 }
 
@@ -86,7 +86,7 @@ ObjectCommHeader::Serialize(Buffer::Iterator start) const
     i.WriteU8(m_objID);
     i.WriteU8(m_type);
     i.WriteU8(m_freq);
-    i.WriteU8(m_sf);
+    i.WriteU8(m_dr);
 
     if (m_type == 1) i.WriteU8(m_delay);
 }
@@ -98,7 +98,7 @@ ObjectCommHeader::Deserialize(Buffer::Iterator start)
     m_objID = i.ReadU8();
     m_type = i.ReadU8();
     m_freq = i.ReadU8();
-    m_sf = i.ReadU8();
+    m_dr = i.ReadU8();
 
     if (m_type == 1) m_delay = i.ReadU8();
 
@@ -112,6 +112,7 @@ ObjectCommHeader::GetFrequencyIndex(double freq)
     if (freq == 868.1) freqI = 1;
     if (freq == 868.3) freqI = 2;
     if (freq == 868.5) freqI = 3;
+    if (freq == 869.525) freqI = 4; // could maybe be used for machines far away?
 
     return freqI;
 }
@@ -123,6 +124,7 @@ ObjectCommHeader::GetFrequencyFromIndex(uint8_t index)
     if (index == 1) freq = 868.1;
     if (index == 2) freq = 868.3;
     if (index == 3) freq = 868.5;
+    if (index == 4) freq = 869.525; // could maybe be used for machines far away?
 
     return freq;
 }
@@ -134,9 +136,9 @@ ObjectCommHeader::GetFreq()
 }
 
 uint8_t
-ObjectCommHeader::GetSF()
+ObjectCommHeader::GetDR()
 {
-    return m_sf;
+    return m_dr;
 }
 
 uint8_t

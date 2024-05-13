@@ -38,7 +38,7 @@ class ObjectCommHeader : public Header {
 
     void SetFreq(uint8_t freq);
 
-    void SetSF(uint8_t sf);
+    void SetDR(uint8_t dr);
 
     void SetDelay(uint8_t delay);
 
@@ -52,7 +52,7 @@ class ObjectCommHeader : public Header {
 
     uint8_t GetFreq();
 
-    uint8_t GetSF();
+    uint8_t GetDR();
 
     uint8_t GetType();
 
@@ -78,7 +78,7 @@ class ObjectCommHeader : public Header {
     uint8_t m_objID{42};
     uint8_t m_type{0};
     uint8_t m_freq{0};
-    uint8_t m_sf{0};
+    uint8_t m_dr{0};
     uint8_t m_delay{0};
     //uint16_t m_payloadSize{0};
 };

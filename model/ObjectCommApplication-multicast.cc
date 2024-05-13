@@ -75,13 +75,13 @@ void ObjectCommApplicationMulticast::callbackReception(std::string context, Ptr<
         bool isFirst = getReceivedTotal()==0 ? true : false;
         NS_LOG_INFO("Received " << getReceivedTotal() << "/" << m_objectSize << " bytes: open free window isFirst: "<<isFirst);
         double frequency = ObjectCommHeader::GetFrequencyFromIndex(oHdr.GetFreq());
-        uint8_t sf = oHdr.GetSF();
+        uint8_t dr = oHdr.GetDR();
         if(isFirst) {
             NS_LOG_INFO("WINDOW time:" <<Seconds(oHdr.GetDelay()*10));
             Simulator::Schedule(Seconds((uint64_t)oHdr.GetDelay()*10),
-                &ClassAOpenWindowEndDeviceLorawanMac::openFreeReceiveWindow, m_mac, frequency, sf);
+                &ClassAOpenWindowEndDeviceLorawanMac::openFreeReceiveWindow, m_mac, frequency, dr);
         } else
-            m_mac->openFreeReceiveWindow(frequency, sf);
+            m_mac->openFreeReceiveWindow(frequency, dr);
     } else {
         NS_LOG_INFO("Received " << getReceivedTotal()  << "/" << m_objectSize << " bytes: stopping now");
         m_mac->closeFreeReceiveWindow();
