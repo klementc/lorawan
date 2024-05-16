@@ -42,6 +42,8 @@ class ObjectCommApplicationMulticast : public Application
 
     void SendRequest();
 
+    void SetMinDelayReTx(double delay);
+
     uint64_t getReceivedTotal();
     void setReceivedTotal(uint64_t);
 
@@ -54,6 +56,10 @@ class ObjectCommApplicationMulticast : public Application
     uint64_t m_currentReceived;
     uint8_t m_objectID; //!< id of the object the client wants to retrieve
     Ptr<UniformRandomVariable> m_rng;
+    double m_min_delay_retransmission {50};
+    bool gotAck{false};
+    double m_frequency;
+    uint8_t m_dr;
 
 };
 

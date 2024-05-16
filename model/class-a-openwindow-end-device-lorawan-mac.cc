@@ -27,7 +27,8 @@ ClassAOpenWindowEndDeviceLorawanMac::GetTypeId()
 }
 
 ClassAOpenWindowEndDeviceLorawanMac::ClassAOpenWindowEndDeviceLorawanMac()
-    : ClassAEndDeviceLorawanMac()
+    : m_isInOpenWindow(false),
+      ClassAEndDeviceLorawanMac()
 {
     NS_LOG_FUNCTION(this);
 }
@@ -45,11 +46,13 @@ void ClassAOpenWindowEndDeviceLorawanMac::openFreeReceiveWindow(double frequency
     m_phy->GetObject<EndDeviceLoraPhy>()->SetFrequency(frequency);
     m_phy->GetObject<EndDeviceLoraPhy>()->SetSpreadingFactor(GetSfFromDataRate(datarate));
 
+    m_isInOpenWindow = true;
     // for now just stay in standby until further notice. TODO: compute when to close it in case there was a problem
 }
 
 void ClassAOpenWindowEndDeviceLorawanMac::closeFreeReceiveWindow() {
   NS_LOG_FUNCTION_NOARGS();
+  m_isInOpenWindow = false;
 
   Ptr<EndDeviceLoraPhy> phy = m_phy->GetObject<EndDeviceLoraPhy>();
 
@@ -77,5 +80,8 @@ void ClassAOpenWindowEndDeviceLorawanMac::closeFreeReceiveWindow() {
 
 }
 
+bool ClassAOpenWindowEndDeviceLorawanMac::checkIsInOpenSlot() {
+    return m_isInOpenWindow;
+}
 } /* namespace lorawan */
 } /* namespace ns3 */

@@ -118,6 +118,8 @@ class ConfirmedMessagesComponent : public NetworkControllerComponent
     void ProcessPacket(Ptr<const Packet> packet,
                                              Ptr<EndDeviceStatus> status,
                                              Ptr<NetworkStatus> networkStatus);
+    enum ObjectPhase {initialize,pool, advertize, send};
+    void SwitchToState(ObjectPhase phase);
     void EmitObject(Ptr<Packet> packetTemplate, Ptr<NetworkStatus> networkStatus);
 
     void BeforeSendingReply(Ptr<EndDeviceStatus> status, Ptr<NetworkStatus> networkStatus) override;

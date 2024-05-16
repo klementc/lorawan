@@ -67,7 +67,7 @@ void BufferedForwarder::Forward() {
     NS_LOG_DEBUG("With waiting time "<<waitTime);
     // if no waiting time, send now
     if ( waitTime<=Seconds(0)) {
-        NS_LOG_DEBUG("Send tail packet now");
+        NS_LOG_DEBUG("Send tail packet, buffer size "<<m_packetBuffer.size());
 
         Ptr<Packet> packetCopy = m_packetBuffer.back()->Copy();
         m_packetBuffer.pop_back();
@@ -87,6 +87,7 @@ BufferedForwarder::ReceiveFromPointToPoint(Ptr<NetDevice> pointToPointNetDevice,
                                    const Address& sender)
 {
     m_packetBuffer.push_back(packet);
+    NS_LOG_DEBUG("Buffer size: "<<m_packetBuffer.size());
     Forward();
 
     return true;

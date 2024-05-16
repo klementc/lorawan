@@ -22,6 +22,7 @@
  */
 
 #include "class-a-end-device-lorawan-mac.h"
+#include "class-a-openwindow-end-device-lorawan-mac.h"
 
 #include "end-device-lora-phy.h"
 #include "end-device-lorawan-mac.h"
@@ -238,6 +239,11 @@ ClassAEndDeviceLorawanMac::Receive(Ptr<const Packet> packet)
             // Reset retransmission parameters
             resetRetransmissionParameters();
         }
+    } else if(this->GetObject<ClassAOpenWindowEndDeviceLorawanMac>()!=nullptr) {
+        NS_LOG_INFO("OTHER CASE "<<GetObject<ClassAOpenWindowEndDeviceLorawanMac>()->checkIsInOpenSlot());
+        // device is listening, so we have to warn the application so that it can reopen the window instead of just sleeping
+        // Call the trace source
+        m_receivedPacket(packet);
     }
 
 }
@@ -249,6 +255,12 @@ ClassAEndDeviceLorawanMac::FailedReception(Ptr<const Packet> packet)
 
     // Switch to sleep after a failed reception
     m_phy->GetObject<EndDeviceLoraPhy>()->SwitchToSleep();
+
+    // if the device is in an openwindow, stay in standby to not forget to listen to further emissions
+    if(this->GetObject<ClassAOpenWindowEndDeviceLorawanMac>()!=nullptr && this->GetObject<ClassAOpenWindowEndDeviceLorawanMac>()->checkIsInOpenSlot()) {
+        NS_LOG_INFO("PACKET LOST BUT WE CONTINUE LISTENING "<<GetObject<ClassAOpenWindowEndDeviceLorawanMac>()->checkIsInOpenSlot());
+        m_phy->GetObject<EndDeviceLoraPhy>()->SwitchToStandby();
+    }
 
     if (m_secondReceiveWindow.IsExpired() && m_retxParams.waitingAck)
     {

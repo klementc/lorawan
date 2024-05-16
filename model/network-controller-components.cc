@@ -114,66 +114,109 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
 
 static bool alreadySent = false;
 double freq = 0;
-uint8_t dr = 0;
+uint8_t dr = 10;
 double emitTime = 0;
+std::pair<ConfirmedMessagesComponent::ObjectPhase, double> currentState = std::make_pair(ConfirmedMessagesComponent::ObjectPhase::initialize, 0);
+LorawanMacHeader mHdr;
+LoraFrameHeader fHdr;
+ObjectCommHeader oHdr;
+LoraTag tag;
+LoraDeviceAddress devAddr;
 void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
                                              Ptr<EndDeviceStatus> status,
                                              Ptr<NetworkStatus> networkStatus)
 {
 
     NS_LOG_FUNCTION(this->GetTypeId() << packet << networkStatus);
-
-    LorawanMacHeader mHdr;
-    LoraFrameHeader fHdr;
-    ObjectCommHeader oHdr;
-    LoraTag tag;
-
-    Ptr<Packet> myPacket = packet->Copy();
-    myPacket->RemoveHeader(mHdr);
-    myPacket->RemoveHeader(fHdr);
-    myPacket->RemoveHeader(oHdr);
-    myPacket->RemovePacketTag(tag);
-    auto devAddr = fHdr.GetAddress();
+    std::vector<uint8_t> sfdr {12, 11, 10, 9, 8, 7, 7};
 
     // TODO: use packet info to initialize and send ACK only if it is time to do it
-
-    status->m_reply.frameHeader.SetAsDownlink();
-    status->m_reply.frameHeader.SetAck(true);
-    status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
-    status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
-    status->m_reply.needsReply = true;
-    auto retPL = Create<Packet>(0);
-
-    if (! alreadySent) {
-        //take freq and sf from LoRa tag
-        freq = tag.GetFrequency();
-        std::vector<uint8_t> sfdr {12, 11, 10, 9, 8, 7, 7};
-        dr = 0;
-        for(int i=0;i<sfdr.size();i++){if(sfdr[i]==tag.GetSpreadingFactor()) {dr=i;break;}}
-        NS_LOG_INFO("freq: "<<tag.GetFrequency()<<" header index: "<< ObjectCommHeader::GetFrequencyIndex(freq)<< "SFFFFFFFFFFFFFFF: "<<(uint64_t)tag.GetSpreadingFactor() << " DR: "<<(uint64_t)tag.GetDataRate() << " corrected DR: "<<(uint64_t)dr);
-        emitTime = (Simulator::Now()+Seconds(1000)).GetSeconds();
+    if(currentState.first == ObjectPhase::pool && currentState.second+1000<=(Simulator::Now()).GetSeconds()) {
+        // must switch to advertising phase
+        currentState = std::make_pair(ObjectPhase::advertize, Simulator::Now().GetSeconds());
+    } else if (currentState.first == ObjectPhase::initialize){
+        currentState = std::make_pair(ObjectPhase::pool, Simulator::Now().GetSeconds());
     }
-    oHdr.SetType(1); // DL ACK type
-    oHdr.SetFreq(ObjectCommHeader::GetFrequencyIndex(freq));
-    oHdr.SetDR(dr);
+    if(currentState.first == ObjectPhase::pool) {
+        // Pooling phase, do not send any ACK during this phase
+        NS_LOG_INFO("POOLING");
+        status->m_reply.frameHeader.SetAck(false);
+        status->m_reply.needsReply = false;
 
-    uint8_t nbTicks = (uint8_t)(floor((Seconds(emitTime)-Simulator::Now()).GetSeconds()/10))-1;
-    NS_LOG_INFO("NB TICKS: "<<emitTime<<" "<<(floor(((Seconds(emitTime)-Simulator::Now()).GetSeconds())/10)));
-    oHdr.SetDelay(nbTicks);
+        // save tx params if it is what we want
+        Ptr<Packet> myPacket = packet->Copy();
+        LoraTag tagtmp;
+        myPacket->RemovePacketTag(tagtmp);
+        double drtmp = 0;
+        for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tagtmp.GetSpreadingFactor()) {drtmp=i;break;}}
+        if (drtmp<dr) {
+            NS_LOG_INFO("SET NEW SF VALUE IN POOL PHASE: "<<(uint64_t)dr<<"->"<<drtmp);
+            //
+            myPacket->RemoveHeader(mHdr);
+            myPacket->RemoveHeader(fHdr);
+            myPacket->RemoveHeader(oHdr);
+            devAddr = fHdr.GetAddress();
+            tag = tagtmp;
+            dr=drtmp;
+        }
+    } else if (currentState.first == ObjectPhase::advertize) {
+        // Advertise, compute the SF and Freq is necessary, and send an ACK
+        NS_LOG_INFO("ADVERTISING");
+        status->m_reply.frameHeader.SetAsDownlink();
+        status->m_reply.frameHeader.SetAck(true);
+        status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
+        status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
+        status->m_reply.needsReply = true;
+        auto retPL = Create<Packet>(0);
 
-    retPL->AddHeader(oHdr);
-    status->m_reply.payload = retPL;
+        if (! alreadySent) {
+            //take freq and sf from LoRa tag
+            freq = tag.GetFrequency();
+            dr = 0;
+            for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tag.GetSpreadingFactor()) {dr=i;break;}}
+            NS_LOG_INFO("freq: "<<tag.GetFrequency()<<" header index: "<< ObjectCommHeader::GetFrequencyIndex(freq)<< "SFFFFFFFFFFFFFFF: "<<(uint64_t)tag.GetSpreadingFactor() << " DR: "<<(uint64_t)tag.GetDataRate() << " corrected DR: "<<(uint64_t)dr);
+            emitTime = (Simulator::Now()+Seconds(1000)).GetSeconds();
+        }
 
-    NS_LOG_INFO("Request for object ID: "<< (uint64_t)oHdr.GetObjID()<< " already sent: "<<alreadySent);
-    if(! alreadySent) {
-        EmitObject(networkStatus->GetReplyForDevice(devAddr, 3), networkStatus);
-        alreadySent = true;
+        oHdr.SetType(1); // DL ACK type
+        oHdr.SetFreq(ObjectCommHeader::GetFrequencyIndex(freq));
+        oHdr.SetDR(dr);
+
+        uint8_t nbTicks = (uint8_t)(floor((Seconds(emitTime)-Simulator::Now()).GetSeconds()/10))-1;
+        NS_LOG_INFO("NB TICKS: "<<emitTime<<" "<<(floor(((Seconds(emitTime)-Simulator::Now()).GetSeconds())/10)));
+        oHdr.SetDelay(nbTicks);
+
+        retPL->AddHeader(oHdr);
+        status->m_reply.payload = retPL;
+
+        NS_LOG_INFO("Request for object ID: "<< (uint64_t)oHdr.GetObjID()<< " already sent: "<<alreadySent);
+        if(! alreadySent) {
+            //Simulator::Schedule(std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0)),
+            //    &ConfirmedMessagesComponent::EmitObject, this, networkStatus->GetReplyForDevice(devAddr, 3), networkStatus);
+            EmitObject(networkStatus->GetReplyForDevice(devAddr, 3), networkStatus);
+            alreadySent = true;
+        }
     }
+    // possibly to use to retransmit the object after a tramsnission was already started
+    /*if (alreadySent && Simulator::Now()>Seconds(emitTime)) {
+        NS_LOG_INFO("!!!!!!!!!!WARNING: CURRENTLY WORKS ONLY IF OBJECT TX DUR < 1000");
+        NS_LOG_INFO("OBJECT ALREADY SENT (OR CURRENTLY SENDING), RESET TX PARAMS FOR FUTURE BROADCAST");
+        alreadySent=false;
+    }*/
+
+}
+
+void ConfirmedMessagesComponent::SwitchToState(ObjectPhase phase){
+    currentState = std::make_pair(phase, Simulator::Now().GetSeconds());
+    // if we reset the alg, we need to reset alreadySent
+    if (phase == ObjectPhase::initialize) alreadySent = false;
 }
 
 void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<NetworkStatus> networkStatus)
 {
     NS_LOG_INFO("CALL TO EMIT");
+    // switch to sending since we start sending now
+
     LorawanMacHeader mHdr;
     LoraFrameHeader fHdr;
     ObjectCommHeader oHdr;
@@ -205,9 +248,11 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
     std::vector<uint32_t> maxPLsize {59, 59, 59, 123, 230, 230, 230, 230};
     int payloadSize = maxPLsize[dr]-oHdr.GetSerializedSize();
 
+    Simulator::Schedule(std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0)),
+        &ConfirmedMessagesComponent::SwitchToState, this, ObjectPhase::send);
 
     for(int nbSent=0;nbSent<OBJECT_SIZE_BYTES; nbSent+=payloadSize) {
-        NS_LOG_INFO("Schedule SendThroughGW after " << emitTime << " seconds");
+        NS_LOG_INFO("Schedule SendThroughGW after " << emitTime << " seconds, total="<<nbSent<<"/"<<OBJECT_SIZE_BYTES);
         NS_LOG_INFO("ADDR: "<< fHdr.GetAddress());
 
         Ptr<Packet> pktPayload = Create<Packet>(std::min(OBJECT_SIZE_BYTES-nbSent, payloadSize));
@@ -220,13 +265,16 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
         tag.SetFrequency(freq);
         pktPayload->AddPacketTag(tag);
 
-        Simulator::Schedule(Seconds(emitTime)-Simulator::Now(),
-            &NetworkStatus::SendThroughGateway, networkStatus, pktPayload, gwToUse);
-        //networkStatus->SendThroughGateway(dataPacket, networkStatus->GetBestGatewayForDevice(fHdr.GetAddress(), 1));
-    }
-    // add info to pool
 
-    // if ready to send, schedule future downlink transmissions
+        Simulator::Schedule(std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0))+Seconds(nbSent/payloadSize),
+            &NetworkStatus::SendThroughGateway, networkStatus, pktPayload, gwToUse);
+        //networkStatus->SendThroughGateway(pktPayload, gwToUse);
+    }
+
+    // TODO: GO BACK TO INIT PHASE AFTER EVERYTHING IS FINISHED
+    NS_LOG_INFO("Go back to init in "<<std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0))+Seconds(2000) << "seconds");
+    Simulator::Schedule(std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0))+Seconds(2000),
+        &ConfirmedMessagesComponent::SwitchToState, this, ObjectPhase::initialize);
 }
 
 void

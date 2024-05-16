@@ -29,6 +29,7 @@ ObjectCommApplicationMulticast::GetTypeId()
 }
 
 ObjectCommApplicationMulticast::ObjectCommApplicationMulticast()
+    : m_frequency(-1), m_dr(0)
 {
     NS_LOG_FUNCTION_NOARGS();
     m_rng = CreateObject<UniformRandomVariable>();
@@ -36,6 +37,11 @@ ObjectCommApplicationMulticast::ObjectCommApplicationMulticast()
 
 static void callSend(Ptr<ObjectCommApplicationMulticast> app) {
     app->SendRequest();
+}
+
+void ObjectCommApplicationMulticast::SetMinDelayReTx(double delay) {
+    NS_LOG_FUNCTION(delay);
+    m_min_delay_retransmission = delay;
 }
 
 void ObjectCommApplicationMulticast::callbackCheckEndTx(std::string context, uint8_t reqTx, bool success, Time firstAttempt, Ptr<Packet> packet) {
@@ -49,7 +55,7 @@ void ObjectCommApplicationMulticast::callbackCheckEndTx(std::string context, uin
 
     // if failure, retry later? need to chose an application delay for that, maybe keeping it low like between 30 sec and 1 min randomly
     if(success == false) {
-        Simulator::Schedule(Seconds(m_rng->GetInteger(10, 50)), &callSend, this);
+        Simulator::Schedule(Seconds(m_rng->GetInteger(m_min_delay_retransmission, m_min_delay_retransmission+100)), &callSend, this);
     }
 }
 
@@ -65,26 +71,37 @@ void ObjectCommApplicationMulticast::callbackReception(std::string context, Ptr<
     std::ostringstream oss;
     oHdr.Print(oss);
 
-    setReceivedTotal(getReceivedTotal()+packetCopy->GetSize());
-    NS_LOG_DEBUG("Received ACK on "<< m_mac->GetDeviceAddress());
-    //NS_LOG_INFO("Received ACK with data payload of size " << packetCopy->GetSize() << " Current total data received: " << getReceivedTotal());
-    //NS_LOG_INFO("objpacket: "<<oss.str().c_str());
 
-    // open window for future reception or finish
-    if (getReceivedTotal()<m_objectSize) {
-        bool isFirst = getReceivedTotal()==0 ? true : false;
-        NS_LOG_INFO("Received " << getReceivedTotal() << "/" << m_objectSize << " bytes: open free window isFirst: "<<isFirst);
-        double frequency = ObjectCommHeader::GetFrequencyFromIndex(oHdr.GetFreq());
-        uint8_t dr = oHdr.GetDR();
-        if(isFirst) {
-            NS_LOG_INFO("WINDOW time:" <<Seconds(oHdr.GetDelay()*10));
-            Simulator::Schedule(Seconds((uint64_t)oHdr.GetDelay()*10),
-                &ClassAOpenWindowEndDeviceLorawanMac::openFreeReceiveWindow, m_mac, frequency, dr);
-        } else
-            m_mac->openFreeReceiveWindow(frequency, dr);
-    } else {
-        NS_LOG_INFO("Received " << getReceivedTotal()  << "/" << m_objectSize << " bytes: stopping now");
-        m_mac->closeFreeReceiveWindow();
+    //static double frequency = ObjectCommHeader::GetFrequencyFromIndex(oHdr.GetFreq());
+    //uint8_t dr = oHdr.GetDR();
+    // if message is ack type 1, schedule opening of the first window
+    if (oHdr.GetType() == 1 && ! gotAck) {
+        NS_LOG_DEBUG("Received ACK on "<< m_mac->GetDeviceAddress()<< " type: "<<(uint64_t)oHdr.GetType()<<" gotACK: "<<gotAck);
+        // init reception parameters
+        m_frequency = ObjectCommHeader::GetFrequencyFromIndex(oHdr.GetFreq());
+        m_dr = oHdr.GetDR();
+        NS_LOG_INFO("Received ACK type 1, current bytes: "<< getReceivedTotal() << "/" << m_objectSize<< " WINDOW time:" <<Seconds(oHdr.GetDelay()*10).GetSeconds());
+        NS_LOG_INFO("WINDOW time:" <<Seconds(oHdr.GetDelay()*10).GetSeconds());
+        gotAck = true;
+        Simulator::Schedule(Seconds((uint64_t)oHdr.GetDelay()*10),
+            &ClassAOpenWindowEndDeviceLorawanMac::openFreeReceiveWindow, m_mac, m_frequency, m_dr);
+    } // if message is ack type 2, add datareceived to total and open window for next fragment if necessary
+    else if (oHdr.GetType() == 2 && gotAck) {
+        NS_LOG_DEBUG("Received ACK on "<< m_mac->GetDeviceAddress()<< " type: "<<(uint64_t)oHdr.GetType()<<" gotACK: "<<gotAck);
+        setReceivedTotal(getReceivedTotal()+packetCopy->GetSize());
+        NS_LOG_INFO("Received " << getReceivedTotal() << "/" << m_objectSize << " bytes: open free window");
+        // open window for future reception or finish
+        if (getReceivedTotal()<m_objectSize) {
+            m_mac->openFreeReceiveWindow(m_frequency, m_dr);
+        } else {
+            NS_LOG_INFO("Received " << getReceivedTotal()  << "/" << m_objectSize << " bytes: stopping now");
+            m_mac->closeFreeReceiveWindow();
+            gotAck = false; // reset for possible future tx or to avoid processing useless packets
+        }
+    } // if the message is an other type of message not for us, reopen the window
+    else {
+        NS_LOG_INFO("NOT SMART BUT REOPEN WINDOW, THIS MESSAGE WAS PUTTING THE DEVICE TO SLEEP");
+        m_mac->openFreeReceiveWindow(m_frequency, m_dr);
     }
 }
 
