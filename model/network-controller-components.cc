@@ -128,9 +128,34 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
 {
 
     NS_LOG_FUNCTION(this->GetTypeId() << packet << networkStatus);
-    std::vector<uint8_t> sfdr {12, 11, 10, 9, 8, 7, 7};
 
-    // TODO: use packet info to initialize and send ACK only if it is time to do it
+    // Process in case of single fragment request
+    Ptr<Packet> checkType = packet->Copy();
+    LorawanMacHeader mHdrtmp; LoraFrameHeader fHdrtmp; ObjectCommHeader oHdrtmp;
+    checkType->RemoveHeader(mHdrtmp);
+    checkType->RemoveHeader(fHdrtmp);
+    checkType->RemoveHeader(oHdrtmp);
+    if (oHdrtmp.GetType()==3) {
+        NS_LOG_INFO("Single Fragment Tx: # "<<oHdr.GetFragmentNumber());
+        // create ACK reply with payload
+        status->m_reply.frameHeader.SetAsDownlink();
+        status->m_reply.frameHeader.SetAck(true);
+        status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
+        status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
+        status->m_reply.needsReply = true;
+
+        LoraTag tagtmp;
+        checkType->RemovePacketTag(tagtmp);
+        int drVal = -1;
+        for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tagtmp.GetSpreadingFactor()) {drVal=i;break;}}
+        // TODO: compute size for last packet which can be smaller than that
+        auto retFragment = Create<Packet>(maxPLsize[drVal]-oHdr.GetSerializedSize());
+        retFragment->AddHeader(oHdrtmp);
+        status->m_reply.payload = retFragment;
+        return; // dont go further, no need to
+    }
+
+
     if(currentState.first == ObjectPhase::pool && currentState.second+1000<=(Simulator::Now()).GetSeconds()) {
         // must switch to advertising phase
         currentState = std::make_pair(ObjectPhase::advertize, Simulator::Now().GetSeconds());
@@ -181,8 +206,16 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
         oHdr.SetType(1); // DL ACK type
         oHdr.SetFreq(ObjectCommHeader::GetFrequencyIndex(freq));
         oHdr.SetDR(dr);
+        auto plSize = 0.;
+        for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tag.GetSpreadingFactor()) {plSize = maxPLsize[i]-oHdr.GetSerializedSize();break;}}
+        oHdr.SetFragmentNumber(std::ceil( OBJECT_SIZE_BYTES/plSize));
 
         uint8_t nbTicks = (uint8_t)(floor((Seconds(emitTime)-Simulator::Now()).GetSeconds()/10))-1;
+        // special case cause nbTicks can underflow and lead to unwanted value, cancel because you wont have time to send the ACK
+        if ((floor((Seconds(emitTime)-Simulator::Now()).GetSeconds()/10))-1 < 0) {
+            status->m_reply.frameHeader.SetAck(false);
+            status->m_reply.needsReply = false;
+        }
         NS_LOG_INFO("NB TICKS: "<<emitTime<<" "<<(floor(((Seconds(emitTime)-Simulator::Now()).GetSeconds())/10)));
         oHdr.SetDelay(nbTicks);
 
@@ -245,7 +278,7 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
     oHdr.SetType(2);
     oHdr.SetFreq(oHdr.GetFrequencyIndex(freq));
     oHdr.SetDR(dr);
-    std::vector<uint32_t> maxPLsize {59, 59, 59, 123, 230, 230, 230, 230};
+
     int payloadSize = maxPLsize[dr]-oHdr.GetSerializedSize();
 
     Simulator::Schedule(std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0)),
@@ -256,6 +289,8 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
         NS_LOG_INFO("ADDR: "<< fHdr.GetAddress());
 
         Ptr<Packet> pktPayload = Create<Packet>(std::min(OBJECT_SIZE_BYTES-nbSent, payloadSize));
+        // add packet fragment number
+        oHdr.SetFragmentNumber(nbSent/payloadSize);
 
         pktPayload->AddHeader(oHdr);
         pktPayload->AddHeader(fHdr);

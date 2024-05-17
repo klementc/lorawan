@@ -63,19 +63,28 @@ ObjectCommHeader::SetDR(uint8_t dr)
 }
 
 void
+ObjectCommHeader::SetFragmentNumber(uint16_t number)
+{
+    NS_LOG_FUNCTION(number);
+    m_fragmentNumber = number;
+}
+
+void
 ObjectCommHeader::Print(std::ostream& os) const
 {
     os << "Object comm header size:" << GetSerializedSize() << " object ID: " << (uint64_t)m_objID <<
         " msg type: " << (uint64_t)m_type << " freq: " << (uint64_t)m_freq << " DR: " << (uint64_t)m_dr <<
-        " delay: " << (uint64_t)m_delay;
+        " delay: " << (uint64_t)m_delay << " Fragment #: "<< (uint64_t)m_fragmentNumber;
 }
 
 uint32_t
 ObjectCommHeader::GetSerializedSize() const
 {
     // account for the additional delay byte
-    if (m_type == 1) return 5;
-    return 4;
+    if (m_type == 0) return 2; // UL request
+    if (m_type == 1) return 6; // DL request ack
+    if (m_type == 2 || m_type == 3) return 4; // DL or UL fragment part or request
+    return 0;
 }
 
 void
@@ -85,10 +94,14 @@ ObjectCommHeader::Serialize(Buffer::Iterator start) const
 
     i.WriteU8(m_objID);
     i.WriteU8(m_type);
-    i.WriteU8(m_freq);
-    i.WriteU8(m_dr);
 
-    if (m_type == 1) i.WriteU8(m_delay);
+    if (m_type == 1) {
+        i.WriteU8((m_freq<<4)+m_dr); // 4 left bits = freq, 4 right bits = dr
+        i.WriteU8(m_delay);
+    }
+    if (m_type==1 || m_type == 2 || m_type == 3) {
+        i.WriteU16(m_fragmentNumber);
+    }
 }
 
 uint32_t
@@ -97,10 +110,16 @@ ObjectCommHeader::Deserialize(Buffer::Iterator start)
     Buffer::Iterator i = start;
     m_objID = i.ReadU8();
     m_type = i.ReadU8();
-    m_freq = i.ReadU8();
-    m_dr = i.ReadU8();
 
-    if (m_type == 1) m_delay = i.ReadU8();
+    if (m_type == 1) {
+        uint8_t txParams = i.ReadU8();
+        m_freq = (txParams>>4) & 0x0F; // 4 leftmost bits
+        m_dr = txParams & 0x0F; // 4 rightmost bits
+        m_delay = i.ReadU8();
+    }
+    if (m_type==1 || m_type == 2 || m_type == 3) {
+        m_fragmentNumber = i.ReadU16();
+    }
 
     return GetSerializedSize();
 }
@@ -157,6 +176,12 @@ uint8_t
 ObjectCommHeader::GetDelay()
 {
     return m_delay;
+}
+
+uint16_t
+ObjectCommHeader::GetFragmentNumber()
+{
+    return m_fragmentNumber;
 }
 
 }

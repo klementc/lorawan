@@ -190,7 +190,10 @@ ClassAEndDeviceLorawanMac::Receive(Ptr<const Packet> packet)
         else
         {
             NS_LOG_DEBUG("The message is intended for another recipient.");
-
+            if(this->GetObject<ClassAOpenWindowEndDeviceLorawanMac>()!=nullptr && GetObject<ClassAOpenWindowEndDeviceLorawanMac>()->checkIsInOpenSlot()) {
+                NS_LOG_INFO("WARNING OTHER CASE OTHER RECIPIENT, KEEP IN STANDBY");
+                m_phy->GetObject<EndDeviceLoraPhy>()->SwitchToStandby();
+            }
             // In this case, we are either receiving in the first receive window
             // and finishing reception inside the second one, or receiving a
             // packet in the second receive window and finding out, after the

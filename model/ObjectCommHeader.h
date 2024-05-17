@@ -18,6 +18,7 @@ namespace lorawan
  *    - 0 = uplink packet
  *    - 1 = downlink ACK
  *    - 2 = downlink Fragment tx
+ *    - 3 = single fragment transmission <= special type, not for classic DL multicast
  * - MsgFreq is the frequency to use for future object tx params (0 for uplinks)
  * - MsgSF is the spreading factor to use for future object tx params (0 for uplinks)
  *  - delay is only used for the ack before sending the object to specify a delay after
@@ -42,6 +43,8 @@ class ObjectCommHeader : public Header {
 
     void SetDelay(uint8_t delay);
 
+    void SetFragmentNumber(uint16_t number);
+
     void Print(std::ostream& os) const override;
 
     uint32_t GetSerializedSize() const override;
@@ -57,6 +60,8 @@ class ObjectCommHeader : public Header {
     uint8_t GetType();
 
     uint8_t GetDelay();
+
+    uint16_t GetFragmentNumber();
 
     /**
      * Get the frequency index, used to set DL freq in the packet without a byte instead of a double
@@ -80,7 +85,7 @@ class ObjectCommHeader : public Header {
     uint8_t m_freq{0};
     uint8_t m_dr{0};
     uint8_t m_delay{0};
-    //uint16_t m_payloadSize{0};
+    uint16_t m_fragmentNumber{0};
 };
 
 }

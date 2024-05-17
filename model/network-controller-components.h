@@ -98,6 +98,8 @@ class ConfirmedMessagesComponent : public NetworkControllerComponent
      *  Register this type.
      *  \return The object TypeId.
      */
+    std::vector<uint8_t> sfdr {12, 11, 10, 9, 8, 7, 7};
+    std::vector<uint32_t> maxPLsize {59, 59, 59, 123, 230, 230, 230, 230};
     static TypeId GetTypeId();
 
     ConfirmedMessagesComponent();           //!< Default constructor

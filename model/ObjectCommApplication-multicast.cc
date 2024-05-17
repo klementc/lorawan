@@ -80,14 +80,14 @@ void ObjectCommApplicationMulticast::callbackReception(std::string context, Ptr<
         // init reception parameters
         m_frequency = ObjectCommHeader::GetFrequencyFromIndex(oHdr.GetFreq());
         m_dr = oHdr.GetDR();
-        NS_LOG_INFO("Received ACK type 1, current bytes: "<< getReceivedTotal() << "/" << m_objectSize<< " WINDOW time:" <<Seconds(oHdr.GetDelay()*10).GetSeconds());
+        NS_LOG_INFO("Received ACK type 1, current bytes: "<< getReceivedTotal() << "/" << m_objectSize<< " WINDOW time:" <<Seconds(oHdr.GetDelay()*10).GetSeconds()<<" Nb fragments to receive: "<<oHdr.GetFragmentNumber());
         NS_LOG_INFO("WINDOW time:" <<Seconds(oHdr.GetDelay()*10).GetSeconds());
         gotAck = true;
         Simulator::Schedule(Seconds((uint64_t)oHdr.GetDelay()*10),
             &ClassAOpenWindowEndDeviceLorawanMac::openFreeReceiveWindow, m_mac, m_frequency, m_dr);
     } // if message is ack type 2, add datareceived to total and open window for next fragment if necessary
     else if (oHdr.GetType() == 2 && gotAck) {
-        NS_LOG_DEBUG("Received ACK on "<< m_mac->GetDeviceAddress()<< " type: "<<(uint64_t)oHdr.GetType()<<" gotACK: "<<gotAck);
+        NS_LOG_DEBUG("Received ACK on "<< m_mac->GetDeviceAddress()<< " type: "<<(uint64_t)oHdr.GetType()<<" gotACK: "<<gotAck<<" Fragment: "<< oHdr.GetFragmentNumber());
         setReceivedTotal(getReceivedTotal()+packetCopy->GetSize());
         NS_LOG_INFO("Received " << getReceivedTotal() << "/" << m_objectSize << " bytes: open free window");
         // open window for future reception or finish
