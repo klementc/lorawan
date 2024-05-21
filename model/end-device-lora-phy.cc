@@ -167,7 +167,6 @@ void
 EndDeviceLoraPhy::SwitchToSleep()
 {
     NS_LOG_FUNCTION_NOARGS();
-    NS_LOG_INFO("Current state: "<<m_state);
     NS_ASSERT(m_state == STANDBY);
 
     m_state = SLEEP;

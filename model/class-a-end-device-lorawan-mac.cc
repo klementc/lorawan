@@ -191,7 +191,7 @@ ClassAEndDeviceLorawanMac::Receive(Ptr<const Packet> packet)
         {
             NS_LOG_DEBUG("The message is intended for another recipient.");
             if(this->GetObject<ClassAOpenWindowEndDeviceLorawanMac>()!=nullptr && GetObject<ClassAOpenWindowEndDeviceLorawanMac>()->checkIsInOpenSlot()) {
-                NS_LOG_INFO("WARNING OTHER CASE OTHER RECIPIENT, KEEP IN STANDBY");
+                NS_LOG_DEBUG("WARNING OTHER CASE OTHER RECIPIENT, KEEP IN STANDBY");
                 m_phy->GetObject<EndDeviceLoraPhy>()->SwitchToStandby();
             }
             // In this case, we are either receiving in the first receive window
@@ -243,7 +243,7 @@ ClassAEndDeviceLorawanMac::Receive(Ptr<const Packet> packet)
             resetRetransmissionParameters();
         }
     } else if(this->GetObject<ClassAOpenWindowEndDeviceLorawanMac>()!=nullptr) {
-        NS_LOG_INFO("OTHER CASE "<<GetObject<ClassAOpenWindowEndDeviceLorawanMac>()->checkIsInOpenSlot());
+        NS_LOG_DEBUG("OTHER CASE "<<GetObject<ClassAOpenWindowEndDeviceLorawanMac>()->checkIsInOpenSlot());
         // device is listening, so we have to warn the application so that it can reopen the window instead of just sleeping
         // Call the trace source
         m_receivedPacket(packet);
@@ -261,7 +261,7 @@ ClassAEndDeviceLorawanMac::FailedReception(Ptr<const Packet> packet)
 
     // if the device is in an openwindow, stay in standby to not forget to listen to further emissions
     if(this->GetObject<ClassAOpenWindowEndDeviceLorawanMac>()!=nullptr && this->GetObject<ClassAOpenWindowEndDeviceLorawanMac>()->checkIsInOpenSlot()) {
-        NS_LOG_INFO("PACKET LOST BUT WE CONTINUE LISTENING "<<GetObject<ClassAOpenWindowEndDeviceLorawanMac>()->checkIsInOpenSlot());
+        NS_LOG_DEBUG("PACKET LOST BUT WE CONTINUE LISTENING "<<GetObject<ClassAOpenWindowEndDeviceLorawanMac>()->checkIsInOpenSlot());
         m_phy->GetObject<EndDeviceLoraPhy>()->SwitchToStandby();
     }
 

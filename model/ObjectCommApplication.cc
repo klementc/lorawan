@@ -46,7 +46,7 @@ void ObjectCommApplication::callbackCheckEndTx(std::string context, uint8_t reqT
     ns3::lorawan::LoraFrameHeader fHdr;
     packetCopy->RemoveHeader(fHdr);
 
-    NS_LOG_DEBUG("Finished Tx, device: "<<fHdr.GetAddress()<<" success: "<<success<< " total: "<<m_currentReceived<<" first attempt: "<<firstAttempt<<" fcnt: "<<fHdr.GetFCnt());
+    NS_LOG_INFO("Finished Tx, device: "<<fHdr.GetAddress()<<" success: "<<success<< " total: "<<m_currentReceived<<" first attempt: "<<firstAttempt<<" fcnt: "<<fHdr.GetFCnt());
 
     // if failure, retry later? need to chose an application delay for that, maybe keeping it low like between 30 sec and 1 min randomly
     if(success == false)
@@ -62,7 +62,7 @@ void ObjectCommApplication::callbackReception(std::string context, Ptr<Packet co
     packetCopy->RemoveHeader(fHdr);
 
     setReceivedTotal(getReceivedTotal()+packetCopy->GetSize());
-    NS_LOG_DEBUG("Received ACK on "<< fHdr.GetAddress()<< " with data payload of size " << packetCopy->GetSize() << " Current total data received: " << getReceivedTotal());
+    NS_LOG_INFO("Received ACK on "<< fHdr.GetAddress()<< " with data payload of size " << packetCopy->GetSize() << " Current total data received: " << getReceivedTotal());
     // send a new request if the object is not entirely received
     if (getReceivedTotal() < m_objectSize)
         SendRequest();
@@ -88,7 +88,7 @@ void ObjectCommApplication::SendRequest()
     ObjectCommHeader objHeader;
     objHeader.SetObjID(42);
     packet->AddHeader(objHeader);
-    NS_LOG_INFO("PACKET SEND WITH OBJEID: "<<(uint64_t) objHeader.GetObjID());
+    NS_LOG_DEBUG("PACKET SEND WITH OBJEID: "<<(uint64_t) objHeader.GetObjID());
     m_mac->Send(packet);
 }
 

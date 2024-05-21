@@ -51,7 +51,7 @@ class ObjectCommApplicationMulticast : public Application
     void callbackCheckEndTx(std::string context, uint8_t reqTx, bool success, Time firstAttempt, Ptr<Packet> packet);
 
     void AskFragments();
-    void PrintFragmentMap();
+    std::string PrintFragmentMap();
 
   private:
     Ptr<ClassAOpenWindowEndDeviceLorawanMac> m_mac; //!< The MAC layer of this node, has to provide open windows

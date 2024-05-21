@@ -176,8 +176,7 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
         double drtmp = 0;
         for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tagtmp.GetSpreadingFactor()) {drtmp=i;break;}}
         if (drtmp<dr) {
-            NS_LOG_INFO("SET NEW SF VALUE IN POOL PHASE: "<<(uint64_t)dr<<"->"<<drtmp);
-            //
+            NS_LOG_DEBUG("SET NEW SF VALUE IN POOL PHASE: "<<(uint64_t)dr<<"->"<<drtmp);
             myPacket->RemoveHeader(mHdr);
             myPacket->RemoveHeader(fHdr);
             myPacket->RemoveHeader(oHdr);
@@ -200,7 +199,6 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
             freq = tag.GetFrequency();
             dr = 0;
             for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tag.GetSpreadingFactor()) {dr=i;break;}}
-            NS_LOG_INFO("freq: "<<tag.GetFrequency()<<" header index: "<< ObjectCommHeader::GetFrequencyIndex(freq)<< "SFFFFFFFFFFFFFFF: "<<(uint64_t)tag.GetSpreadingFactor() << " DR: "<<(uint64_t)tag.GetDataRate() << " corrected DR: "<<(uint64_t)dr);
             emitTime = (Simulator::Now()+Seconds(1000)).GetSeconds();
         }
 
@@ -210,7 +208,6 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
         oHdr.SetType(2); // just to get the size of the header with fragment
         for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tag.GetSpreadingFactor()) {plSize = maxPLsize[i]-oHdr.GetSerializedSize();break;}}
         oHdr.SetType(1); // DL ACK type
-        NS_LOG_INFO("plsize: "<<plSize<<" fn: "<<OBJECT_SIZE_BYTES/plSize<< " OS: "<<OBJECT_SIZE_BYTES);
         oHdr.SetFragmentNumber(std::ceil( OBJECT_SIZE_BYTES/plSize));
 
         uint8_t nbTicks = (uint8_t)(floor((Seconds(emitTime)-Simulator::Now()).GetSeconds()/10))-1;
@@ -219,7 +216,6 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
             status->m_reply.frameHeader.SetAck(false);
             status->m_reply.needsReply = false;
         }
-        NS_LOG_INFO("NB TICKS: "<<emitTime<<" "<<(floor(((Seconds(emitTime)-Simulator::Now()).GetSeconds())/10)));
         oHdr.SetDelay(nbTicks);
 
         retPL->AddHeader(oHdr);
@@ -227,18 +223,10 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
 
         NS_LOG_INFO("Request for object ID: "<< (uint64_t)oHdr.GetObjID()<< " already sent: "<<alreadySent);
         if(! alreadySent) {
-            //Simulator::Schedule(std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0)),
-            //    &ConfirmedMessagesComponent::EmitObject, this, networkStatus->GetReplyForDevice(devAddr, 3), networkStatus);
             EmitObject(networkStatus->GetReplyForDevice(devAddr, 3), networkStatus);
             alreadySent = true;
         }
     }
-    // possibly to use to retransmit the object after a tramsnission was already started
-    /*if (alreadySent && Simulator::Now()>Seconds(emitTime)) {
-        NS_LOG_INFO("!!!!!!!!!!WARNING: CURRENTLY WORKS ONLY IF OBJECT TX DUR < 1000");
-        NS_LOG_INFO("OBJECT ALREADY SENT (OR CURRENTLY SENDING), RESET TX PARAMS FOR FUTURE BROADCAST");
-        alreadySent=false;
-    }*/
 
 }
 
@@ -283,14 +271,12 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
     oHdr.SetDR(dr);
 
     int payloadSize = maxPLsize[dr]-oHdr.GetSerializedSize();
-    NS_LOG_UNCOND("PL SIZE: "<<payloadSize);
 
     Simulator::Schedule(std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0)),
         &ConfirmedMessagesComponent::SwitchToState, this, ObjectPhase::send);
 
     for(int nbSent=0;nbSent<OBJECT_SIZE_BYTES; nbSent+=payloadSize) {
         NS_LOG_INFO("Schedule SendThroughGW after " << emitTime << " seconds, total="<<nbSent<<"/"<<OBJECT_SIZE_BYTES/payloadSize);
-        NS_LOG_INFO("ADDR: "<< fHdr.GetAddress());
 
         Ptr<Packet> pktPayload = Create<Packet>(std::min(OBJECT_SIZE_BYTES-nbSent, payloadSize));
         // add packet fragment number
@@ -310,7 +296,7 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
         //networkStatus->SendThroughGateway(pktPayload, gwToUse);
     }
 
-    // TODO: GO BACK TO INIT PHASE AFTER EVERYTHING IS FINISHED
+    // GO BACK TO INIT PHASE AFTER EVERYTHING IS FINISHED
     NS_LOG_INFO("Go back to init in "<<std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0))+Seconds(2000) << "seconds");
     Simulator::Schedule(std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0))+Seconds(2000),
         &ConfirmedMessagesComponent::SwitchToState, this, ObjectPhase::initialize);
