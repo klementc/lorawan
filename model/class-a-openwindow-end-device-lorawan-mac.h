@@ -60,9 +60,12 @@ class ClassAOpenWindowEndDeviceLorawanMac : public ClassAEndDeviceLorawanMac
     void openFreeReceiveWindow(double frequency, uint8_t spreadingFactor);
     void closeFreeReceiveWindow();
     bool checkIsInOpenSlot();
+    void StartWindowInterruption(double duration);
 
   private:
     bool m_isInOpenWindow;
+    double m_fr;
+    uint8_t m_sf;
 }; /* ClassAEndDeviceLorawanMac */
 } /* namespace lorawan */
 } /* namespace ns3 */

@@ -46,16 +46,23 @@ void ObjectCommApplicationMulticast::SetMinDelayReTx(double delay) {
 
 void ObjectCommApplicationMulticast::callbackCheckEndTx(std::string context, uint8_t reqTx, bool success, Time firstAttempt, Ptr<Packet> packet) {
     ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
-    ns3::lorawan::LorawanMacHeader mHdr;
-    packetCopy->RemoveHeader(mHdr);
-    ns3::lorawan::LoraFrameHeader fHdr;
-    packetCopy->RemoveHeader(fHdr);
+    ns3::lorawan::LorawanMacHeader mHdrTmp;
+    packetCopy->RemoveHeader(mHdrTmp);
+    ns3::lorawan::LoraFrameHeader fHdrTmp;
+    packetCopy->RemoveHeader(fHdrTmp);
+    ns3::lorawan::ObjectCommHeader oHdrTmp;
+    packetCopy->RemoveHeader(oHdrTmp);
 
-    NS_LOG_DEBUG("Finished Tx, device: "<<fHdr.GetAddress()<<" success: "<<success<< " total: "<<m_currentReceived<<" first attempt: "<<firstAttempt<<" fcnt: "<<fHdr.GetFCnt());
+    NS_LOG_DEBUG("Finished Tx, device: "<<fHdrTmp.GetAddress()<<" success: "<<success<< " total: "<<m_currentReceived<<" first attempt: "<<firstAttempt<<" fcnt: "<<fHdrTmp.GetFCnt());
 
     // if failure, retry later? need to chose an application delay for that, maybe keeping it low like between 30 sec and 1 min randomly
     if(success == false) {
-        Simulator::Schedule(Seconds(m_rng->GetInteger(m_min_delay_retransmission, m_min_delay_retransmission+100)), &callSend, this);
+        // if single fragment failed, resend it
+        if (oHdrTmp.GetType() == 3) {
+            Simulator::Schedule(Seconds(m_rng->GetInteger(100, 500)), &ObjectCommApplicationMulticast::AskFragments, this);
+        } else {
+            Simulator::Schedule(Seconds(m_rng->GetInteger(m_min_delay_retransmission, m_min_delay_retransmission+100)), &callSend, this);
+        }
     }
 }
 
@@ -80,16 +87,17 @@ void ObjectCommApplicationMulticast::callbackReception(std::string context, Ptr<
         // init reception parameters
         m_frequency = ObjectCommHeader::GetFrequencyFromIndex(oHdr.GetFreq());
         m_dr = oHdr.GetDR();
-        NS_LOG_INFO("Received ACK type 1, current bytes: "<< getReceivedTotal() << "/" << m_objectSize<< " WINDOW time:" <<Seconds(oHdr.GetDelay()*10).GetSeconds()<<" Nb fragments to receive: "<<oHdr.GetFragmentNumber());
+        NS_LOG_INFO("ACK type 1 bytes: "<< getReceivedTotal() << "/" << m_objectSize<< " WINDOW time:" <<Seconds(oHdr.GetDelay()*10).GetSeconds()<<" Nb fragments: "<<oHdr.GetFragmentNumber());
         NS_LOG_INFO("WINDOW time:" <<Seconds(oHdr.GetDelay()*10).GetSeconds());
         gotAck = true;
+        m_fragmentMap = std::vector<bool>(oHdr.GetFragmentNumber(), false);
         Simulator::Schedule(Seconds((uint64_t)oHdr.GetDelay()*10),
             &ClassAOpenWindowEndDeviceLorawanMac::openFreeReceiveWindow, m_mac, m_frequency, m_dr);
     } // if message is ack type 2, add datareceived to total and open window for next fragment if necessary
     else if (oHdr.GetType() == 2 && gotAck) {
         NS_LOG_DEBUG("Received ACK on "<< m_mac->GetDeviceAddress()<< " type: "<<(uint64_t)oHdr.GetType()<<" gotACK: "<<gotAck<<" Fragment: "<< oHdr.GetFragmentNumber());
         setReceivedTotal(getReceivedTotal()+packetCopy->GetSize());
-        NS_LOG_INFO("Received " << getReceivedTotal() << "/" << m_objectSize << " bytes: open free window");
+        m_fragmentMap[oHdr.GetFragmentNumber()] = true;
         // open window for future reception or finish
         if (getReceivedTotal()<m_objectSize) {
             m_mac->openFreeReceiveWindow(m_frequency, m_dr);
@@ -98,11 +106,66 @@ void ObjectCommApplicationMulticast::callbackReception(std::string context, Ptr<
             m_mac->closeFreeReceiveWindow();
             gotAck = false; // reset for possible future tx or to avoid processing useless packets
         }
-    } // if the message is an other type of message not for us, reopen the window
+        PrintFragmentMap();
+        // cancel previous timeout and schedule new one to stop if not receiving any other fragment
+        m_noMoreFragmentsRx.Cancel();
+        m_noMoreFragmentsRx = Simulator::Schedule(Seconds(1000), &ObjectCommApplicationMulticast::AskFragments, this);
+
+    } // if message is type 3, it is a single fragment ACK, add datareceived to total
+    else if (oHdr.GetType() == 3 && gotAck) {
+        if (getReceivedTotal()==0) return; // CHECK WE DIDNT RECEIVE SOMETHING WE SHOULDNT
+        NS_LOG_DEBUG("Received ACK on "<< m_mac->GetDeviceAddress()<< " type: "<<(uint64_t)oHdr.GetType()<<" gotACK: "<<gotAck<<" Fragment: "<< oHdr.GetFragmentNumber());
+        setReceivedTotal(getReceivedTotal()+packetCopy->GetSize());
+        m_fragmentMap[oHdr.GetFragmentNumber()] = true;
+        PrintFragmentMap();
+        if (getReceivedTotal()<m_objectSize) {
+            Simulator::Schedule(Seconds(m_rng->GetInteger(50, 100)), &ObjectCommApplicationMulticast::AskFragments, this);
+        } else {
+            NS_LOG_INFO("Received " << getReceivedTotal()  << "/" << m_objectSize << " bytes: stopping now");
+            gotAck = false; // reset for possible future tx or to avoid processing useless packets
+        }
+    }
+    // if the message is an other type of message not for us, reopen the window
     else {
         NS_LOG_INFO("NOT SMART BUT REOPEN WINDOW, THIS MESSAGE WAS PUTTING THE DEVICE TO SLEEP");
         m_mac->openFreeReceiveWindow(m_frequency, m_dr);
     }
+}
+
+void ObjectCommApplicationMulticast::AskFragments() {
+    // first stop the open rx window
+    if(m_mac->checkIsInOpenSlot())
+        m_mac->closeFreeReceiveWindow();
+
+    // find a fragment to request and send the request
+    for(size_t i=0; i<m_fragmentMap.size(); i++) {
+        if (m_fragmentMap[i] == false) {
+            Ptr<Packet> packet = Create<Packet>(0);
+            ObjectCommHeader objHeader;
+            objHeader.SetObjID(42);
+            objHeader.SetType(3);
+            objHeader.SetFragmentNumber(i);
+            packet->AddHeader(objHeader);
+            NS_LOG_INFO("Ask for single fragment "<<(uint64_t) objHeader.GetFragmentNumber());
+            m_mac->Send(packet);
+            break;
+        }
+    }
+}
+
+void ObjectCommApplicationMulticast::PrintFragmentMap() {
+    std::ostringstream str;
+    int nbRec = 0;
+    str << "Fragment Map: [";
+    for(size_t i=0; i<m_fragmentMap.size(); i++) {
+        if(m_fragmentMap[i]) {
+            nbRec++;
+            str << "=";
+        } else
+            str << ".";
+    }
+    str << "] ("<<nbRec<<"/"<<m_fragmentMap.size()<<")";
+    NS_LOG_INFO(str.str());
 }
 
 uint64_t ObjectCommApplicationMulticast::getReceivedTotal() {

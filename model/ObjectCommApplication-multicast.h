@@ -50,6 +50,9 @@ class ObjectCommApplicationMulticast : public Application
     void callbackReception(std::string context, Ptr<Packet const> packet);
     void callbackCheckEndTx(std::string context, uint8_t reqTx, bool success, Time firstAttempt, Ptr<Packet> packet);
 
+    void AskFragments();
+    void PrintFragmentMap();
+
   private:
     Ptr<ClassAOpenWindowEndDeviceLorawanMac> m_mac; //!< The MAC layer of this node, has to provide open windows
     uint64_t m_objectSize; //!< Total size of the object to retrieve
@@ -60,6 +63,8 @@ class ObjectCommApplicationMulticast : public Application
     bool gotAck{false};
     double m_frequency;
     uint8_t m_dr;
+    EventId m_noMoreFragmentsRx;
+    std::vector<bool> m_fragmentMap;
 
 };
 

@@ -150,6 +150,7 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
         for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tagtmp.GetSpreadingFactor()) {drVal=i;break;}}
         // TODO: compute size for last packet which can be smaller than that
         auto retFragment = Create<Packet>(maxPLsize[drVal]-oHdr.GetSerializedSize());
+        oHdrtmp.SetType(3);
         retFragment->AddHeader(oHdrtmp);
         status->m_reply.payload = retFragment;
         return; // dont go further, no need to
@@ -203,11 +204,13 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
             emitTime = (Simulator::Now()+Seconds(1000)).GetSeconds();
         }
 
-        oHdr.SetType(1); // DL ACK type
         oHdr.SetFreq(ObjectCommHeader::GetFrequencyIndex(freq));
         oHdr.SetDR(dr);
         auto plSize = 0.;
+        oHdr.SetType(2); // just to get the size of the header with fragment
         for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tag.GetSpreadingFactor()) {plSize = maxPLsize[i]-oHdr.GetSerializedSize();break;}}
+        oHdr.SetType(1); // DL ACK type
+        NS_LOG_INFO("plsize: "<<plSize<<" fn: "<<OBJECT_SIZE_BYTES/plSize<< " OS: "<<OBJECT_SIZE_BYTES);
         oHdr.SetFragmentNumber(std::ceil( OBJECT_SIZE_BYTES/plSize));
 
         uint8_t nbTicks = (uint8_t)(floor((Seconds(emitTime)-Simulator::Now()).GetSeconds()/10))-1;
@@ -280,12 +283,13 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
     oHdr.SetDR(dr);
 
     int payloadSize = maxPLsize[dr]-oHdr.GetSerializedSize();
+    NS_LOG_UNCOND("PL SIZE: "<<payloadSize);
 
     Simulator::Schedule(std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0)),
         &ConfirmedMessagesComponent::SwitchToState, this, ObjectPhase::send);
 
     for(int nbSent=0;nbSent<OBJECT_SIZE_BYTES; nbSent+=payloadSize) {
-        NS_LOG_INFO("Schedule SendThroughGW after " << emitTime << " seconds, total="<<nbSent<<"/"<<OBJECT_SIZE_BYTES);
+        NS_LOG_INFO("Schedule SendThroughGW after " << emitTime << " seconds, total="<<nbSent<<"/"<<OBJECT_SIZE_BYTES/payloadSize);
         NS_LOG_INFO("ADDR: "<< fHdr.GetAddress());
 
         Ptr<Packet> pktPayload = Create<Packet>(std::min(OBJECT_SIZE_BYTES-nbSent, payloadSize));

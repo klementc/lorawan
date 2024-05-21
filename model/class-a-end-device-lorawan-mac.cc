@@ -145,7 +145,7 @@ void
 ClassAEndDeviceLorawanMac::Receive(Ptr<const Packet> packet)
 {
     NS_LOG_FUNCTION(this << packet);
-
+    //if(m_phy->GetObject<EndDeviceLoraPhy>()->GetState()==EndDeviceLoraPhy::State::SLEEP) return;
     // Work on a copy of the packet
     Ptr<Packet> packetCopy = packet->Copy();
 
@@ -308,7 +308,8 @@ ClassAEndDeviceLorawanMac::TxFinished(Ptr<const Packet> packet)
     //                                              this);
 
     // Switch the PHY to sleep
-    m_phy->GetObject<EndDeviceLoraPhy>()->SwitchToSleep();
+    if( m_phy->GetObject<EndDeviceLoraPhy>()->GetState()!=EndDeviceLoraPhy::State::RX)
+        m_phy->GetObject<EndDeviceLoraPhy>()->SwitchToSleep();
 }
 
 void

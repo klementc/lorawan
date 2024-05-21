@@ -166,7 +166,7 @@ class ClassAEndDeviceLorawanMac : public EndDeviceLorawanMac
      */
     void OnRxClassParamSetupReq(Ptr<RxParamSetupReq> rxParamSetupReq) override;
 
-  private:
+  protected:
     Time m_receiveDelay1; //!< The interval between when a packet is done sending and when the first
                           //!< receive window is opened.
 
