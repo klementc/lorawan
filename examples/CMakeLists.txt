@@ -60,3 +60,35 @@ build_lib_example(
     ${libcore}
     ${liblorawan}
 )
+
+build_lib_example(
+  NAME bulk_comm_app
+  SOURCE_FILES  bulk_comm_app.cc
+  LIBRARIES_TO_LINK
+    ${libcore}
+    ${liblorawan}
+)
+
+build_lib_example(
+  NAME bulk_comm_app_uplink
+  SOURCE_FILES  bulk_comm_app_uplink.cc
+  LIBRARIES_TO_LINK
+    ${libcore}
+    ${liblorawan}
+)
+
+build_lib_example(
+  NAME bulk_comm_app_multicast
+  SOURCE_FILES  bulk_comm_app_multicast.cc
+  LIBRARIES_TO_LINK
+    ${libcore}
+    ${liblorawan}
+)
+
+build_lib_example(
+  NAME bulk_comm_app_multicast_loss
+  SOURCE_FILES  bulk_comm_app_multicast_loss.cc
+  LIBRARIES_TO_LINK
+    ${libcore}
+    ${liblorawan}
+)

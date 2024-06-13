@@ -25,6 +25,7 @@
 
 #include "ns3/command-line.h"
 #include "ns3/core-module.h"
+#include "ns3/buffered-forwarder-helper.h"
 #include "ns3/forwarder-helper.h"
 #include "ns3/gateway-lora-phy.h"
 #include "ns3/log.h"
@@ -41,55 +42,82 @@
 #include "ns3/periodic-sender.h"
 #include "ns3/point-to-point-module.h"
 #include "ns3/string.h"
+#include "ns3/ObjectCommApplication.h"
+#include "ns3/ObjectCommApplication-multicast.h"
+#include "ns3/basic-energy-source-helper.h"
+#include "ns3/lora-radio-energy-model-helper.h"
+#include "ns3/file-helper.h"
 
 using namespace ns3;
 using namespace lorawan;
 
-NS_LOG_COMPONENT_DEFINE("NetworkServerExample");
+NS_LOG_COMPONENT_DEFINE("BulkCommApp");
+
+double simTime = 100000;
+void logEnergy(DeviceEnergyModelContainer devices) {
+    static double prevVal = -1;
+    double totEnergy = 0;
+
+    for(uint32_t i=0;i<devices.GetN();i++) {
+        totEnergy += devices.Get(i)->GetTotalEnergyConsumption();
+        //NS_LOG_INFO(deviceModels.Get(i)->GetTotalEnergyConsumption());
+    }
+    if (totEnergy != prevVal || std::fmod(Simulator::Now().GetSeconds(),100) == 0 ) {
+        NS_LOG_INFO("Total energy: "<<totEnergy);
+        prevVal = totEnergy;
+    }
+    Simulator::Schedule(Seconds(10), logEnergy, devices);
+}
 
 int
 main(int argc, char* argv[])
 {
     bool verbose = false;
-    //int msg_size = 1;
-    int nb_ED = 2;
-    int nb_msg_per_ED = 1;
-    double msg_interval = 5;
+    int obj_size = 1000;
+    int nb_ED = 1;
     int seed = 1;
+    double dist = 0;
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("verbose", "Whether to print output or not", verbose);
     cmd.AddValue("nb_ED", "Number of end devices in the simulated platform", nb_ED);
-    cmd.AddValue("nb_msg_per_ED", "Number of messages sent by each device", nb_msg_per_ED);
-    cmd.AddValue("msg_interval", "Duration between two consecutive messages fromt the same ED", msg_interval);
+    cmd.AddValue("obj_size", "size of the transfered object in bytes", obj_size);
     cmd.AddValue("seed", "random seed", seed);
+    cmd.AddValue("dist", "distance between the ED and the GW", dist);
 
     cmd.Parse(argc, argv);
 
+    ns3::RngSeedManager::SetSeed(seed);
+    ns3::RngSeedManager::SetRun(seed);
 
     // Logging
     //////////
-  ns3::LogComponentEnable("LoraChannel", ns3::LOG_LEVEL_ALL);
-
-    LogComponentEnable("NetworkServerExample", LOG_LEVEL_ALL);
+    LogComponentEnable("BulkCommApp", LOG_LEVEL_ALL);
+    LogComponentEnable("ObjectCommApplication", LOG_LEVEL_ALL);
+    LogComponentEnable("ClassAOpenWindowEndDeviceLorawanMac", LOG_LEVEL_INFO);
+    LogComponentEnable("ClassAEndDeviceLorawanMac", LOG_LEVEL_INFO);
+    LogComponentEnable("ObjectCommApplicationMulticast", LOG_LEVEL_INFO);
+    LogComponentEnable("NetworkControllerComponent", LOG_LEVEL_INFO);
+    //LogComponentEnable("BufferedForwarder", LOG_LEVEL_ALL);
+    //LogComponentEnable("ObjectCommHeader", LOG_LEVEL_ALL);
+    //LogComponentEnable("GatewayLorawanMac", LOG_LEVEL_ALL);
     //LogComponentEnable("NetworkServer", LOG_LEVEL_ALL);
-    LogComponentEnable("GatewayLorawanMac", LOG_LEVEL_ALL);
     // LogComponentEnable("LoraFrameHeader", LOG_LEVEL_ALL);
     // LogComponentEnable("LorawanMacHeader", LOG_LEVEL_ALL);
     // LogComponentEnable("MacCommand", LOG_LEVEL_ALL);
-    // LogComponentEnable("GatewayLoraPhy", LOG_LEVEL_ALL);
-    // LogComponentEnable("LoraPhy", LOG_LEVEL_ALL);
+    //LogComponentEnable("GatewayLoraPhy", LOG_LEVEL_ALL);
+    //LogComponentEnable("LoraPhy", LOG_LEVEL_ALL);
     // LogComponentEnable("LoraChannel", LOG_LEVEL_ALL);
-    // LogComponentEnable("EndDeviceLoraPhy", LOG_LEVEL_ALL);
+    //LogComponentEnable("EndDeviceLoraPhy", LOG_LEVEL_ALL);
     // LogComponentEnable("LogicalLoraChannelHelper", LOG_LEVEL_ALL);
-    LogComponentEnable("EndDeviceLorawanMac", LOG_LEVEL_ALL);
-    LogComponentEnable("ClassAEndDeviceLorawanMac", LOG_LEVEL_ALL);
+    //LogComponentEnable("EndDeviceLorawanMac", LOG_LEVEL_ALL);
     // LogComponentEnable ("OneShotSender", LOG_LEVEL_ALL);
     // LogComponentEnable("PointToPointNetDevice", LOG_LEVEL_ALL);
     // LogComponentEnable ("Forwarder", LOG_LEVEL_ALL);
     // LogComponentEnable ("OneShotSender", LOG_LEVEL_ALL);
     // LogComponentEnable ("DeviceStatus", LOG_LEVEL_ALL);
-    // LogComponentEnable ("GatewayStatus", LOG_LEVEL_ALL);
+    //LogComponentEnable ("GatewayStatus", LOG_LEVEL_ALL);
+    //LogComponentEnable ("LoraRadioEnergyModel", LOG_LEVEL_ALL);
     LogComponentEnableAll(LOG_PREFIX_FUNC);
     LogComponentEnableAll(LOG_PREFIX_NODE);
     LogComponentEnableAll(LOG_PREFIX_TIME);
@@ -113,7 +141,7 @@ main(int argc, char* argv[])
     MobilityHelper mobilityGw;
     Ptr<ListPositionAllocator> positionAllocEd = CreateObject<ListPositionAllocator>();
     for(int i=0;i<nb_ED;i++) {
-        positionAllocEd->Add(Vector(0.0, 0.0, 0.0));
+        positionAllocEd->Add(Vector(dist, 0.0, 0.0));
     }
     mobilityEd.SetPositionAllocator(positionAllocEd);
     mobilityEd.SetMobilityModel("ns3::ConstantPositionMobilityModel");
@@ -158,22 +186,17 @@ main(int argc, char* argv[])
         auto ldev = (*dev)->GetObject<LoraNetDevice>();
         ldev->GetMac()->GetObject<ns3::lorawan::EndDeviceLorawanMac>()->SetMType(ns3::lorawan::LorawanMacHeader::CONFIRMED_DATA_UP);
     }
-
-    // Set message type (Default is unconfirmed)
-    //Ptr<LorawanMac> edMac1 = endDevices.Get(1)->GetDevice(0)->GetObject<LoraNetDevice>()->GetMac();
-    //Ptr<ClassAEndDeviceLorawanMac> edLorawanMac1 = edMac1->GetObject<ClassAEndDeviceLorawanMac>();
-    //edLorawanMac1->SetMType(LorawanMacHeader::CONFIRMED_DATA_UP);
-
-    // Install applications in end devices
-
-
+    Ptr<UniformRandomVariable> rng = CreateObject<UniformRandomVariable>();
+    ObjectFactory factory;
+    factory.SetTypeId("ns3::ObjectCommApplication");
     /* Communication in the LoRa zone */
     for (int i=0; i<nb_ED; i++) {
-        for (int j=0; j<nb_msg_per_ED; j++) {
-                OneShotSenderHelper oneShotHelper = OneShotSenderHelper();
-                oneShotHelper.SetSendTime(Seconds(5+(msg_interval*j)));
-                oneShotHelper.Install(endDevices.Get(i));
-        }
+        Ptr<ObjectCommApplication> app = factory.Create<ObjectCommApplication>();
+
+        app->SetStartTime(Time::FromDouble(rng->GetInteger(10, 100), Time::Unit::S));
+        app->SetObjectSize(obj_size);
+        app->SetNode(endDevices.Get(i));
+        endDevices.Get(i)->AddApplication(app);
     }
 
     ////////////////
@@ -204,6 +227,7 @@ main(int argc, char* argv[])
     p2p.SetChannelAttribute("Delay", StringValue("0ms"));
     // Store network server app registration details for later
     P2PGwRegistration_t gwRegistration;
+
     for (auto gw = gateways.Begin(); gw != gateways.End(); ++gw)
     {
         auto container = p2p.Install(networkServer, *gw);
@@ -218,14 +242,42 @@ main(int argc, char* argv[])
     networkServerHelper.Install(networkServer);
 
     // Install the Forwarder application on the gateways
+    //BufferedForwarderHelper forwarderHelper;
     ForwarderHelper forwarderHelper;
+
     forwarderHelper.Install(gateways);
 
+    /************************
+     * Install Energy Model *
+     ************************/
+
+    BasicEnergySourceHelper basicSourceHelper;
+    LoraRadioEnergyModelHelper radioEnergyHelper;
+
+    // configure energy source
+    basicSourceHelper.Set("BasicEnergySourceInitialEnergyJ", DoubleValue(10000000)); // Energy in J
+    basicSourceHelper.Set("BasicEnergySupplyVoltageV", DoubleValue(3.3));
+
+    radioEnergyHelper.Set("StandbyCurrentA", DoubleValue(0.0014));
+    radioEnergyHelper.Set("TxCurrentA", DoubleValue(0.028));
+    radioEnergyHelper.Set("SleepCurrentA", DoubleValue(0.0000015));
+    radioEnergyHelper.Set("RxCurrentA", DoubleValue(0.0112));
+
+    // install source on end devices' nodes
+    EnergySourceContainer sources = basicSourceHelper.Install(endDevices);
+    Names::Add("/Names/EnergySource", sources.Get(0));
+
+    // install device model
+    DeviceEnergyModelContainer deviceModels =
+        radioEnergyHelper.Install(netdevs, sources);
+
+    // Function to log energy consumed
+    Simulator::Schedule(Seconds(0), &logEnergy, deviceModels);
+
     // Start simulation
-    Simulator::Stop(Seconds(800));
-    ns3::RngSeedManager::SetSeed(1);
-    ns3::RngSeedManager::SetRun(1);
+    Simulator::Stop(Seconds(simTime));
     Simulator::Run();
+
     Simulator::Destroy();
 
     return 0;

@@ -339,8 +339,7 @@ main(int argc, char* argv[])
     // Create a network server for the network
     nsHelper.SetGatewaysP2P(gwRegistration);
     nsHelper.SetEndDevices(endDevices);
-    nsHelper.Install(networkServer);
-
+    auto appcontainer = nsHelper.Install(networkServer);
     // Create a forwarder for each gateway
     forHelper.Install(gateways);
 

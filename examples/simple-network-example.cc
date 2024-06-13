@@ -150,6 +150,13 @@ main(int argc, char* argv[])
     oneShotSenderHelper.SetSendTime(Seconds(2));
 
     oneShotSenderHelper.Install(endDevices);
+    oneShotSenderHelper.SetSendTime(Seconds(15));
+
+    oneShotSenderHelper.Install(endDevices);
+        oneShotSenderHelper.SetSendTime(Seconds(15));
+
+    oneShotSenderHelper.Install(endDevices);
+
 
     /******************
      * Set Data Rates *

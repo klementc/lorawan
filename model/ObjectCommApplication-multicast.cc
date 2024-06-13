@@ -53,7 +53,7 @@ void ObjectCommApplicationMulticast::callbackCheckEndTx(std::string context, uin
     ns3::lorawan::ObjectCommHeader oHdrTmp;
     packetCopy->RemoveHeader(oHdrTmp);
 
-    NS_LOG_DEBUG("Finished Tx, device: "<<fHdrTmp.GetAddress()<<" success: "<<success<< " total: "<<m_currentReceived<<" first attempt: "<<firstAttempt<<" fcnt: "<<fHdrTmp.GetFCnt());
+    NS_LOG_INFO("Finished Tx, device: "<<fHdrTmp.GetAddress()<<" success: "<<success<< " total: "<<m_currentReceived<<" first attempt: "<<firstAttempt<<" fcnt: "<<fHdrTmp.GetFCnt());
 
     // if failure, retry later? need to chose an application delay for that, maybe keeping it low like between 30 sec and 1 min randomly
     if(success == false) {
