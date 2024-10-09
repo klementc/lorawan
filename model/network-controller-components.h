@@ -117,17 +117,38 @@ class ConfirmedMessagesComponent : public NetworkControllerComponent
                           Ptr<EndDeviceStatus> status,
                           Ptr<NetworkStatus> networkStatus) override;
 
-    void ProcessPacket(Ptr<const Packet> packet,
-                                             Ptr<EndDeviceStatus> status,
-                                             Ptr<NetworkStatus> networkStatus);
+    /**
+     * Use this function to process incoming requests from ED to set up a multicast update over the air
+     * Packet should use Fport=MC_GROUP_SETUP
+     */
+    void ProcessUOTARequest(Ptr<const Packet> packet,
+                          Ptr<EndDeviceStatus> status,
+                          Ptr<NetworkStatus> networkStatus);
+
+    /**
+     * Use this function to process the packet of an incoming packet using Fport=SINGLE_FRAGMENT_REQUEST
+     * This fport should be used to retrieve a single fragment of the object
+     */
+    void ProcessSingleFragmentReq(Ptr<const Packet> packet,
+                          Ptr<EndDeviceStatus> status,
+                          Ptr<NetworkStatus> networkStatus);
+
+    /**
+     * Used to make actions according to the current state of the multicast application
+     */
     enum ObjectPhase {initialize,pool, advertize, send};
+
+    /**
+     * Depending on the policy chosen by the service administrator, select the best parameter for the multicast among
+     * the collected data during pool phase
+     */
+    std::pair<LoraTag, LoraDeviceAddress> SelectParamsForBroadcast();
     void SwitchToState(ObjectPhase phase);
     void EmitObject(Ptr<Packet> packetTemplate, Ptr<NetworkStatus> networkStatus);
 
     void BeforeSendingReply(Ptr<EndDeviceStatus> status, Ptr<NetworkStatus> networkStatus) override;
 
     void OnFailedReply(Ptr<EndDeviceStatus> status, Ptr<NetworkStatus> networkStatus) override;
-    void SelectParamsForBroadcast();
 };
 
 /**

@@ -229,19 +229,19 @@ void ObjectCommApplicationMulticast::SendMulticastInitRequest()
 }
 
 void ObjectCommApplicationMulticast::SetFPort(uint8_t newPort) {
+    NS_ASSERT(m_mac);
+    m_mac->SetFPort(newPort);
+}
+
+void ObjectCommApplicationMulticast::StartApplication()
+{
     if (!m_mac) {
         // Assumes there's only one device
         Ptr<LoraNetDevice> loraNetDevice = m_node->GetDevice(0)->GetObject<LoraNetDevice>();
         m_mac = loraNetDevice->GetMac()->GetObject<ClassAOpenWindowEndDeviceLorawanMac>();
         NS_ASSERT(m_mac);
     }
-    m_mac->SetFPort(newPort);
-}
-
-void ObjectCommApplicationMulticast::StartApplication()
-{
     NS_LOG_FUNCTION_NOARGS();
-
     m_currentReceived = 0;
     m_mac->TraceConnect("ReceivedPacket", "Received data", MakeCallback(&ObjectCommApplicationMulticast::callbackReception, this));
     m_mac->TraceConnect("RequiredTransmissions", "Failed or not", MakeCallback(&ObjectCommApplicationMulticast::callbackCheckEndTx, this));

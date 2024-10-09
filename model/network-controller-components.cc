@@ -31,6 +31,49 @@ NS_LOG_COMPONENT_DEFINE("NetworkControllerComponent");
 
 NS_OBJECT_ENSURE_REGISTERED(NetworkControllerComponent);
 
+static LorawanMacHeader getMacHdr(Ptr<Packet const> packet) {
+    ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
+    ns3::lorawan::LorawanMacHeader mHdr;
+    packetCopy->RemoveHeader(mHdr);
+
+    return mHdr;
+    ns3::lorawan::LoraFrameHeader fHdr;
+    packetCopy->RemoveHeader(fHdr);
+    ObjectCommHeader oHdr;
+    packetCopy->RemoveHeader(oHdr);
+}
+
+static LoraFrameHeader getFrameHdr(Ptr<Packet const> packet) {
+    ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
+    ns3::lorawan::LorawanMacHeader mHdr;
+    packetCopy->RemoveHeader(mHdr);
+    ns3::lorawan::LoraFrameHeader fHdr;
+    packetCopy->RemoveHeader(fHdr);
+    return fHdr;
+}
+
+static ObjectCommHeader getObjHdr(Ptr<Packet const> packet) {
+    ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
+    ns3::lorawan::LorawanMacHeader mHdr;
+    packetCopy->RemoveHeader(mHdr);
+    ns3::lorawan::LoraFrameHeader fHdr;
+    packetCopy->RemoveHeader(fHdr);
+    ObjectCommHeader oHdr;
+    packetCopy->RemoveHeader(oHdr);
+    return oHdr;
+}
+
+static Ptr<Packet> getObjPayload(Ptr<Packet const> packet) {
+        ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
+    ns3::lorawan::LorawanMacHeader mHdr;
+    packetCopy->RemoveHeader(mHdr);
+    ns3::lorawan::LoraFrameHeader fHdr;
+    packetCopy->RemoveHeader(fHdr);
+    ObjectCommHeader oHdr;
+    packetCopy->RemoveHeader(oHdr);
+    return packetCopy;
+}
+
 TypeId
 NetworkControllerComponent::GetTypeId()
 {
@@ -87,9 +130,13 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
     NS_LOG_INFO("Received packet Frame Header: " << fHdr);
 
     // if object broadcast request process it, otherwise keep classic ACK for confirmed packets
-    if (fHdr.GetFPort() == 13){
-        ProcessPacket(packet, status, networkStatus);
-    } else if (mHdr.GetMType() == LorawanMacHeader::CONFIRMED_DATA_UP)
+    if (fHdr.GetFPort() == ObjectCommHeader::FPORT_SINGLE_FRAG) {
+        ProcessSingleFragmentReq(packet, status, networkStatus);
+    }
+    else if (fHdr.GetFPort() == ObjectCommHeader::FPORT_MC_GR_SETUP){
+        ProcessUOTARequest(packet, status, networkStatus);
+    }
+    else if (mHdr.GetMType() == LorawanMacHeader::CONFIRMED_DATA_UP)
     {
         NS_LOG_INFO("Packet requires confirmation");
 
@@ -99,8 +146,8 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
         status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
         status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
         status->m_reply.needsReply = true;
-        status->m_reply.payload = Create<Packet>(230);
-        //status->m_reply.payload = Create<Packet>(0);
+        //status->m_reply.payload = Create<Packet>(230);
+        status->m_reply.payload = Create<Packet>(0);
 
         // Note that the acknowledgment procedure dies here: "Acknowledgments
         // are only snt in response to the latest message received and are never
@@ -118,16 +165,12 @@ uint8_t dr = 10;
 double emitTime = 0;
 std::pair<ConfirmedMessagesComponent::ObjectPhase, double> currentState = std::make_pair(ConfirmedMessagesComponent::ObjectPhase::initialize, 0);
 std::vector<std::pair<LoraTag,LoraDeviceAddress>> registeredNodes;
-LorawanMacHeader mHdr;
-LoraFrameHeader fHdr;
-ObjectCommHeader oHdr;
-LoraTag tag;
 LoraDeviceAddress devAddr;
 enum txParamsPolicy {ALL_MACHINES, FASTEST_MACHINES, N_PERCENT};
 txParamsPolicy selectedPolicy = txParamsPolicy::ALL_MACHINES;
 
 // uses registered nodes and the selected policy to define the parameters for transmission of the model
-void ConfirmedMessagesComponent::SelectParamsForBroadcast()
+std::pair<LoraTag, LoraDeviceAddress> ConfirmedMessagesComponent::SelectParamsForBroadcast()
 {
     std::pair<LoraTag, LoraDeviceAddress> selectedParams = registeredNodes[0];
     double lowestDR;
@@ -146,9 +189,6 @@ void ConfirmedMessagesComponent::SelectParamsForBroadcast()
                     selectedParams = params;
                 }
             }
-            dr = lowestDR;
-            tag = selectedParams.first;
-            devAddr = selectedParams.second;
             break;
         case txParamsPolicy::FASTEST_MACHINES:
             // Policy 2: Send the update only to the closest set of machines -> select the lowest SF
@@ -163,9 +203,6 @@ void ConfirmedMessagesComponent::SelectParamsForBroadcast()
                     selectedParams = params;
                 }
             }
-            dr = lowestDR;
-            tag = selectedParams.first;
-            devAddr = selectedParams.second;
             break;
         case txParamsPolicy::N_PERCENT:
             NS_LOG_ERROR("TODO, NOT IMPLEMENTED YET");
@@ -174,46 +211,52 @@ void ConfirmedMessagesComponent::SelectParamsForBroadcast()
             NS_LOG_ERROR("Tx paramaters policy does not exist");
             exit(1);
     }
+    return selectedParams;
 
 }
 
-void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
+void ConfirmedMessagesComponent::ProcessSingleFragmentReq(Ptr<const Packet> packet,
                                              Ptr<EndDeviceStatus> status,
                                              Ptr<NetworkStatus> networkStatus)
 {
 
     NS_LOG_FUNCTION(this->GetTypeId() << packet << networkStatus);
 
-    // Process in case of single fragment request
-    Ptr<Packet> checkType = packet->Copy();
-    LorawanMacHeader mHdrtmp; LoraFrameHeader fHdrtmp; ObjectCommHeader oHdrtmp;
-    checkType->RemoveHeader(mHdrtmp);
-    checkType->RemoveHeader(fHdrtmp);
-    checkType->RemoveHeader(oHdrtmp);
-    if (oHdrtmp.GetType()==3) {
-        NS_LOG_INFO("Single Fragment Tx: # "<<oHdr.GetFragmentNumber()<<" DR: "<<dr<<" Freq: "<<freq);
-        // create ACK reply with payload
-        status->m_reply.frameHeader.SetAsDownlink();
-        status->m_reply.frameHeader.SetAck(true);
-        status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
-        status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
-        status->m_reply.needsReply = true;
+    LoraFrameHeader fHdr = getFrameHdr(packet);
+    ObjectCommHeader oHdr = getObjHdr(packet);
 
-        LoraTag tagtmp;
-        checkType->RemovePacketTag(tagtmp);
-        int drVal = -1;
-        for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tagtmp.GetSpreadingFactor()) {drVal=i;break;}}
-        auto retFragment = Create<Packet>(maxPLsize[drVal]-oHdr.GetSerializedSize());
-        oHdrtmp.SetType(3);
-        retFragment->AddHeader(oHdrtmp);
-        status->m_reply.payload = retFragment;
-        return; // dont go further, no need to
-    }
+    NS_LOG_INFO("Single Fragment Tx: # "<<oHdr.GetFragmentNumber());
+    // create ACK reply with payload
+    status->m_reply.frameHeader.SetFPort(ObjectCommHeader::FPORT_SINGLE_FRAG);
+    status->m_reply.frameHeader.SetAsDownlink();
+    status->m_reply.frameHeader.SetAck(true);
+    status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
+    status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
+    status->m_reply.needsReply = true;
 
+    Ptr<Packet> myPacket = packet->Copy();
+    LoraTag tagtmp;
+    myPacket->RemovePacketTag(tagtmp);
+    int drVal = -1;
+    for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tagtmp.GetSpreadingFactor()) {drVal=i;break;}}
+    auto retFragment = Create<Packet>(maxPLsize[drVal]-oHdr.GetSerializedSize());
+    oHdr.SetType(3);
+    retFragment->AddHeader(oHdr);
+    status->m_reply.payload = retFragment;
+}
+
+void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
+                                             Ptr<EndDeviceStatus> status,
+                                             Ptr<NetworkStatus> networkStatus)
+{
+    static std::pair<LoraTag, LoraDeviceAddress> dest;
+    static bool isDestDefined = false;
+    NS_LOG_FUNCTION(this->GetTypeId() << packet << networkStatus);
 
     if(currentState.first == ObjectPhase::pool && currentState.second+1000<=(Simulator::Now()).GetSeconds()) {
         // must switch to advertising phase
         currentState = std::make_pair(ObjectPhase::advertize, Simulator::Now().GetSeconds());
+        isDestDefined = false;
     } else if (currentState.first == ObjectPhase::initialize){
         currentState = std::make_pair(ObjectPhase::pool, Simulator::Now().GetSeconds());
     }
@@ -227,39 +270,39 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
         Ptr<Packet> myPacket = packet->Copy();
         LoraTag tagtmp;
         myPacket->RemovePacketTag(tagtmp);
-        // store LoRa tag and device adress for selection later
-        myPacket->RemoveHeader(mHdr);
-        myPacket->RemoveHeader(fHdr);
-        devAddr = fHdr.GetAddress();
-        registeredNodes.push_back(std::make_pair(tagtmp,devAddr));
+        LoraFrameHeader fHdr = getFrameHdr(packet);
+        registeredNodes.push_back(std::make_pair(tagtmp, fHdr.GetAddress()));
 
     } else if (currentState.first == ObjectPhase::advertize) {
         // First step: compute the Tx parameters to use
-        SelectParamsForBroadcast();
+        if (! isDestDefined){ // TODO: check this is working correctly
+            dest = SelectParamsForBroadcast();
+            isDestDefined = true;
+        }
 
         // Acknowledge clients with the broadcast information
         NS_LOG_INFO("ADVERTISING");
+        status->m_reply.frameHeader.SetFPort(ObjectCommHeader::FPORT_CLASSC_SESS);
         status->m_reply.frameHeader.SetAsDownlink();
         status->m_reply.frameHeader.SetAck(true);
-        status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
+        status->m_reply.frameHeader.SetAddress(dest.second);
         status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
         status->m_reply.needsReply = true;
         auto retPL = Create<Packet>(0);
 
         if (! alreadyScheduled) {
             //take freq and sf from LoRa tag
-            freq = tag.GetFrequency();
+            freq = dest.first.GetFrequency();
             dr = 0;
-            for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tag.GetSpreadingFactor()) {dr=i;break;}}
+            for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==dest.first.GetSpreadingFactor()) {dr=i;break;}}
             emitTime = (Simulator::Now()+Seconds(1000)).GetSeconds();
         }
-
+        ObjectCommHeader oHdr;
         oHdr.SetFreq(ObjectCommHeader::GetFrequencyIndex(freq));
         oHdr.SetDR(dr);
         auto plSize = 0.;
-        oHdr.SetType(2); // just to get the size of the header with fragment
-        for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tag.GetSpreadingFactor()) {plSize = maxPLsize[i]-oHdr.GetSerializedSize();break;}}
-        oHdr.SetType(1); // DL ACK type
+        oHdr.SetType(1); // just to get the size of the header with fragment
+        for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==dest.first.GetSpreadingFactor()) {plSize = maxPLsize[i]-oHdr.GetSerializedSize();break;}}
         oHdr.SetFragmentNumber(std::ceil( OBJECT_SIZE_BYTES/plSize));
 
         uint8_t nbTicks = (uint8_t)(floor((Seconds(emitTime)-Simulator::Now()).GetSeconds()/10))-1;
@@ -275,7 +318,7 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
 
         NS_LOG_INFO("Request for object ID: "<< (uint64_t)oHdr.GetObjID()<< " already sent: "<<alreadyScheduled);
         if(! alreadyScheduled) {
-            EmitObject(networkStatus->GetReplyForDevice(devAddr, 3), networkStatus);
+            EmitObject(networkStatus->GetReplyForDevice(dest.second, 3), networkStatus);
             alreadyScheduled = true;
         }
     }
@@ -305,7 +348,6 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
     auto gwToUse = networkStatus->GetBestGatewayForDevice(fHdr.GetAddress(), 1);
     fHdr.SetAddress(LoraDeviceAddress(0,0));
 
-    // check if need to ACK or not
     NS_LOG_INFO("USING GW "<<gwToUse << " for dev "<< fHdr.GetAddress());
     if (gwToUse == Address()) {
         NS_LOG_INFO("Schedule emit after 1 more second");
@@ -321,6 +363,7 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
     oHdr.SetType(2);
     oHdr.SetFreq(oHdr.GetFrequencyIndex(freq));
     oHdr.SetDR(dr);
+    fHdr.SetFPort(ObjectCommHeader::FPORT_MULTICAST);
 
     int payloadSize = maxPLsize[dr]-oHdr.GetSerializedSize();
 
