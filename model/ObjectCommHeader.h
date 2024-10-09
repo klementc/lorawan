@@ -2,6 +2,9 @@
 #define OBJECT_COMM_HEADER_H
 
 #include "ns3/header.h"
+#include "ns3/lorawan-mac-header.h"
+#include "ns3/lora-frame-header.h"
+#include "ns3/packet.h"
 
 namespace ns3
 {
@@ -30,6 +33,14 @@ class ObjectCommHeader : public Header {
     static TypeId GetTypeId();
     TypeId GetInstanceTypeId() const override;
 
+    // FPORTS used at the different steps for the multicast exchange session
+    static const uint8_t FPORT_MC_GR_SETUP = 200;
+    static const uint8_t FPORT_FRAG_SESS_SETUP = 201;
+    static const uint8_t FPORT_CLOCK_SYNCH = 202;
+    static const uint8_t FPORT_CLASSC_SESS = 203;
+    static const uint8_t FPORT_MULTICAST = 204;
+    static const uint8_t FPORT_VALIDATION = 205;
+    static const uint8_t FPORT_SINGLE_FRAG = 206;
 
     void SetObjID(uint8_t);
 

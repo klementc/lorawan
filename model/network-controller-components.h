@@ -127,6 +127,7 @@ class ConfirmedMessagesComponent : public NetworkControllerComponent
     void BeforeSendingReply(Ptr<EndDeviceStatus> status, Ptr<NetworkStatus> networkStatus) override;
 
     void OnFailedReply(Ptr<EndDeviceStatus> status, Ptr<NetworkStatus> networkStatus) override;
+    void SelectParamsForBroadcast();
 };
 
 /**

@@ -112,16 +112,71 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
     }
 }
 
-static bool alreadySent = false;
+bool alreadyScheduled = false;
 double freq = 0;
 uint8_t dr = 10;
 double emitTime = 0;
 std::pair<ConfirmedMessagesComponent::ObjectPhase, double> currentState = std::make_pair(ConfirmedMessagesComponent::ObjectPhase::initialize, 0);
+std::vector<std::pair<LoraTag,LoraDeviceAddress>> registeredNodes;
 LorawanMacHeader mHdr;
 LoraFrameHeader fHdr;
 ObjectCommHeader oHdr;
 LoraTag tag;
 LoraDeviceAddress devAddr;
+enum txParamsPolicy {ALL_MACHINES, FASTEST_MACHINES, N_PERCENT};
+txParamsPolicy selectedPolicy = txParamsPolicy::ALL_MACHINES;
+
+// uses registered nodes and the selected policy to define the parameters for transmission of the model
+void ConfirmedMessagesComponent::SelectParamsForBroadcast()
+{
+    std::pair<LoraTag, LoraDeviceAddress> selectedParams = registeredNodes[0];
+    double lowestDR;
+    double drtmp;
+    switch (selectedPolicy) {
+        case txParamsPolicy::ALL_MACHINES:
+            // Policy 1: All machines receive the message -> select the highest SF
+            lowestDR = 100; // compute lowest DR possible
+            for (auto params : registeredNodes) {
+                NS_LOG_INFO("Processing params for "<<params.second<<" SF: "<<(uint64_t)params.first.GetSpreadingFactor()<<" Freq: "<<params.first.GetFrequency());
+                // compute if this node is better than the previously selected
+                drtmp = 0;
+                for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==params.first.GetSpreadingFactor()) {drtmp=i;break;}}
+                if (drtmp < lowestDR) {
+                    lowestDR = drtmp;
+                    selectedParams = params;
+                }
+            }
+            dr = lowestDR;
+            tag = selectedParams.first;
+            devAddr = selectedParams.second;
+            break;
+        case txParamsPolicy::FASTEST_MACHINES:
+            // Policy 2: Send the update only to the closest set of machines -> select the lowest SF
+            lowestDR = 0; // compute lowest DR possible
+            for (auto params : registeredNodes) {
+                NS_LOG_INFO("Processing params for "<<params.second<<" SF: "<<(uint64_t)params.first.GetSpreadingFactor()<<" Freq: "<<params.first.GetFrequency());
+                // compute if this node is better than the previously selected
+                drtmp = 0;
+                for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==params.first.GetSpreadingFactor()) {drtmp=i;break;}}
+                if (drtmp > lowestDR) {
+                    lowestDR = drtmp;
+                    selectedParams = params;
+                }
+            }
+            dr = lowestDR;
+            tag = selectedParams.first;
+            devAddr = selectedParams.second;
+            break;
+        case txParamsPolicy::N_PERCENT:
+            NS_LOG_ERROR("TODO, NOT IMPLEMENTED YET");
+            break;
+        default:
+            NS_LOG_ERROR("Tx paramaters policy does not exist");
+            exit(1);
+    }
+
+}
+
 void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
                                              Ptr<EndDeviceStatus> status,
                                              Ptr<NetworkStatus> networkStatus)
@@ -136,7 +191,7 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
     checkType->RemoveHeader(fHdrtmp);
     checkType->RemoveHeader(oHdrtmp);
     if (oHdrtmp.GetType()==3) {
-        NS_LOG_INFO("Single Fragment Tx: # "<<oHdr.GetFragmentNumber());
+        NS_LOG_INFO("Single Fragment Tx: # "<<oHdr.GetFragmentNumber()<<" DR: "<<dr<<" Freq: "<<freq);
         // create ACK reply with payload
         status->m_reply.frameHeader.SetAsDownlink();
         status->m_reply.frameHeader.SetAck(true);
@@ -148,7 +203,6 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
         checkType->RemovePacketTag(tagtmp);
         int drVal = -1;
         for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tagtmp.GetSpreadingFactor()) {drVal=i;break;}}
-        // TODO: compute size for last packet which can be smaller than that
         auto retFragment = Create<Packet>(maxPLsize[drVal]-oHdr.GetSerializedSize());
         oHdrtmp.SetType(3);
         retFragment->AddHeader(oHdrtmp);
@@ -173,19 +227,17 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
         Ptr<Packet> myPacket = packet->Copy();
         LoraTag tagtmp;
         myPacket->RemovePacketTag(tagtmp);
-        double drtmp = 0;
-        for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tagtmp.GetSpreadingFactor()) {drtmp=i;break;}}
-        if (drtmp<dr) {
-            NS_LOG_DEBUG("SET NEW SF VALUE IN POOL PHASE: "<<(uint64_t)dr<<"->"<<drtmp);
-            myPacket->RemoveHeader(mHdr);
-            myPacket->RemoveHeader(fHdr);
-            myPacket->RemoveHeader(oHdr);
-            devAddr = fHdr.GetAddress();
-            tag = tagtmp;
-            dr=drtmp;
-        }
+        // store LoRa tag and device adress for selection later
+        myPacket->RemoveHeader(mHdr);
+        myPacket->RemoveHeader(fHdr);
+        devAddr = fHdr.GetAddress();
+        registeredNodes.push_back(std::make_pair(tagtmp,devAddr));
+
     } else if (currentState.first == ObjectPhase::advertize) {
-        // Advertise, compute the SF and Freq is necessary, and send an ACK
+        // First step: compute the Tx parameters to use
+        SelectParamsForBroadcast();
+
+        // Acknowledge clients with the broadcast information
         NS_LOG_INFO("ADVERTISING");
         status->m_reply.frameHeader.SetAsDownlink();
         status->m_reply.frameHeader.SetAck(true);
@@ -194,7 +246,7 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
         status->m_reply.needsReply = true;
         auto retPL = Create<Packet>(0);
 
-        if (! alreadySent) {
+        if (! alreadyScheduled) {
             //take freq and sf from LoRa tag
             freq = tag.GetFrequency();
             dr = 0;
@@ -221,10 +273,10 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
         retPL->AddHeader(oHdr);
         status->m_reply.payload = retPL;
 
-        NS_LOG_INFO("Request for object ID: "<< (uint64_t)oHdr.GetObjID()<< " already sent: "<<alreadySent);
-        if(! alreadySent) {
+        NS_LOG_INFO("Request for object ID: "<< (uint64_t)oHdr.GetObjID()<< " already sent: "<<alreadyScheduled);
+        if(! alreadyScheduled) {
             EmitObject(networkStatus->GetReplyForDevice(devAddr, 3), networkStatus);
-            alreadySent = true;
+            alreadyScheduled = true;
         }
     }
 
@@ -233,7 +285,7 @@ void ConfirmedMessagesComponent::ProcessPacket(Ptr<const Packet> packet,
 void ConfirmedMessagesComponent::SwitchToState(ObjectPhase phase){
     currentState = std::make_pair(phase, Simulator::Now().GetSeconds());
     // if we reset the alg, we need to reset alreadySent
-    if (phase == ObjectPhase::initialize) alreadySent = false;
+    if (phase == ObjectPhase::initialize) alreadyScheduled = false;
 }
 
 void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<NetworkStatus> networkStatus)
@@ -276,7 +328,7 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
         &ConfirmedMessagesComponent::SwitchToState, this, ObjectPhase::send);
 
     for(int nbSent=0;nbSent<OBJECT_SIZE_BYTES; nbSent+=payloadSize) {
-        NS_LOG_INFO("Schedule SendThroughGW after " << emitTime << " seconds, total="<<nbSent<<"/"<<OBJECT_SIZE_BYTES/payloadSize);
+        NS_LOG_INFO("Schedule SendThroughGW after " << emitTime << " seconds, total="<<nbSent<<"/"<<OBJECT_SIZE_BYTES/payloadSize <<" DR: "<<(uint64_t)dr<<" Freq: "<<freq);
 
         Ptr<Packet> pktPayload = Create<Packet>(std::min(OBJECT_SIZE_BYTES-nbSent, payloadSize));
         // add packet fragment number

@@ -25,30 +25,30 @@ class ObjectCommApplicationMulticast : public Application
 
 
     static TypeId GetTypeId();
-
-    /**
-     * Start the application
-     */
     void StartApplication() override;
-
-    /**
-     * Stop the application.
-     */
     void StopApplication() override;
 
-    void SetObjectSize(uint64_t);
 
+    void SetObjectSize(uint64_t);
     void SetObjectID(uint8_t);
 
-    void SendRequest();
 
+    void SetFPort(uint8_t newPort);
     void SetMinDelayReTx(double delay);
-
-    uint64_t getReceivedTotal();
-    void setReceivedTotal(uint64_t);
 
     void callbackReception(std::string context, Ptr<Packet const> packet);
     void callbackCheckEndTx(std::string context, uint8_t reqTx, bool success, Time firstAttempt, Ptr<Packet> packet);
+
+    /**
+     * First request to send towards the NS,
+     * to notify of the interest of the device in receiving an update of the data with id m_objectID
+     */
+    void SendMulticastInitRequest();
+
+    // Functions to process a specific type of incoming request
+    void ProcessClassCSessionReq(Ptr<Packet const> packet);
+    void ProcessMulticastFragRecReq(Ptr<Packet const> packet);
+    void ProcessSingleFragRecReq(Ptr<Packet const> packet);
 
     void AskFragments();
     std::string PrintFragmentMap();
@@ -60,7 +60,7 @@ class ObjectCommApplicationMulticast : public Application
     uint8_t m_objectID; //!< id of the object the client wants to retrieve
     Ptr<UniformRandomVariable> m_rng;
     double m_min_delay_retransmission {50};
-    bool gotAck{false};
+    bool multicastStarted{false};
     double m_frequency;
     uint8_t m_dr;
     EventId m_noMoreFragmentsRx;
