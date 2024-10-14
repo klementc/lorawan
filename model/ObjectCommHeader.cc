@@ -89,30 +89,6 @@ ObjectCommHeader::Deserialize(Buffer::Iterator start)
     return GetSerializedSize();
 }
 
-uint8_t
-ObjectCommHeader::GetFrequencyIndex(double freq)
-{
-    int freqI = 0;
-    if (freq == 868.1) freqI = 1;
-    if (freq == 868.3) freqI = 2;
-    if (freq == 868.5) freqI = 3;
-    if (freq == 869.525) freqI = 4; // could maybe be used for machines far away?
-
-    return freqI;
-}
-
-double
-ObjectCommHeader::GetFrequencyFromIndex(uint8_t index)
-{
-    double freq = 0;
-    if (index == 1) freq = 868.1;
-    if (index == 2) freq = 868.3;
-    if (index == 3) freq = 868.5;
-    if (index == 4) freq = 869.525; // could maybe be used for machines far away?
-
-    return freq;
-}
-
 /******************************
  * FragSessionSetupReq
  ***************************** */
@@ -146,13 +122,16 @@ uint32_t
 FragSessionSetupReq::GetSerializedSize() const
 {
     NS_LOG_FUNCTION_NOARGS();
-    return 10; //1 for the cid
+    return 10 +1; //1 byte for the command id
 }
 
 void
 FragSessionSetupReq::Serialize(Buffer::Iterator start) const
 {
     NS_LOG_FUNCTION_NOARGS();
+
+    // just write the command's byte, we dont use it for now, so it is set to 0
+    start.WriteU8(0x00);
 
     start.WriteU8(m_fragSession);
     start.WriteU16(m_nbFrag);
@@ -166,6 +145,9 @@ uint32_t
 FragSessionSetupReq::Deserialize(Buffer::Iterator start)
 {
     NS_LOG_FUNCTION_NOARGS();
+
+    // just read the command's byte, we dont use it for now, so it is set to 0
+    start.ReadU8();
 
     m_fragSession = start.ReadU8();
     m_nbFrag = start.ReadU16();
@@ -219,13 +201,16 @@ uint32_t FragSessionSetupAns::GetSerializedSize() const
 {
     NS_LOG_FUNCTION_NOARGS();
 
-    return 1;
+    return 1 +1; // 1 byte for command id
 }
 
 void
 FragSessionSetupAns::Serialize(Buffer::Iterator start) const
 {
     NS_LOG_FUNCTION_NOARGS();
+
+    // just write the command's byte, we dont use it for now, so it is set to 0
+    start.WriteU8(0x00);
 
     start.WriteU8(m_statusBitMask);
 }
@@ -234,6 +219,9 @@ uint32_t
 FragSessionSetupAns::Deserialize(Buffer::Iterator start)
 {
     NS_LOG_FUNCTION_NOARGS();
+
+    // just read the command's byte, we dont use it for now, so it is set to 0
+    start.ReadU8();
 
     m_statusBitMask = start.ReadU8();
     return GetSerializedSize();
@@ -277,7 +265,7 @@ DownlinkFragment::GetSerializedSize() const
 {
     NS_LOG_FUNCTION_NOARGS();
 
-    return m_fragmentSize+2;
+    return m_fragmentSize+2 +1; // 1 byte for command id
 }
 
 void
@@ -321,6 +309,9 @@ DownlinkFragment::Serialize(Buffer::Iterator start) const
 {
     NS_LOG_FUNCTION_NOARGS();
 
+    // just write the command's byte, we dont use it for now, so it is set to 0
+    start.WriteU8(0x00);
+
     start.WriteU16(m_indexN);
     // zero filled fragment, change later to put real data
     for(int i=0;i<m_fragmentSize;i++) {
@@ -333,8 +324,10 @@ DownlinkFragment::Deserialize(Buffer::Iterator start)
 {
     NS_LOG_FUNCTION_NOARGS();
 
+    // just read the command's byte, we dont use it for now, so it is set to 0
+    start.ReadU8();
+
     m_indexN = start.ReadU16();
-    //NS_ASSERT(m_indexN > 0); // user should define the fragment size with predefined value before calling the function
 
     while(! start.IsEnd()) {
         auto v = start.ReadU8();
@@ -391,13 +384,16 @@ McClassCSessionReq::Print(std::ostream& os) const
 uint32_t
 McClassCSessionReq::GetSerializedSize() const
 {
-    return 10;
+    return 10 +1; // for command id
 }
 
 void
 McClassCSessionReq::Serialize(Buffer::Iterator start) const
 {
     NS_LOG_FUNCTION_NOARGS();
+
+    // just write the command's byte, we dont use it for now, so it is set to 0
+    start.WriteU8(0x00);
 
     start.WriteU8(m_mcGroupIdHeader);
     start.WriteU32(m_sessionTime);
@@ -413,6 +409,9 @@ uint32_t
 McClassCSessionReq::Deserialize(Buffer::Iterator start)
 {
     NS_LOG_FUNCTION_NOARGS();
+
+    // just read the command's byte, we dont use it for now, so it is set to 0
+    start.ReadU8();
 
     m_mcGroupIdHeader = start.ReadU8();
     m_sessionTime = start.ReadU32();
@@ -507,13 +506,16 @@ McClassCSessionAns::Print(std::ostream& os) const
 uint32_t
 McClassCSessionAns::GetSerializedSize() const
 {
-    return 4;
+    return 4 +1; // 1 for command id
 }
 
 void
 McClassCSessionAns::Serialize(Buffer::Iterator start) const
 {
     NS_LOG_FUNCTION_NOARGS();
+
+    // just write the command's byte, we dont use it for now, so it is set to 0
+    start.WriteU8(0x00);
 
     start.WriteU8(m_statusMcGroupID);
     // 24 bytes to write
@@ -525,6 +527,9 @@ uint32_t
 McClassCSessionAns::Deserialize(Buffer::Iterator start)
 {
     NS_LOG_FUNCTION_NOARGS();
+
+    // just read the command's byte, we dont use it for now, so it is set to 0
+    start.ReadU8();
 
     m_statusMcGroupID = start.ReadU8();
     m_timeToStart = start.ReadU16()<<8;

@@ -90,16 +90,6 @@ class ObjectCommHeader : public Header {
     uint8_t getCID() const;
 
     /**
-     * Get the frequency index, used to set DL freq in the packet without a byte instead of a double
-    */
-    static uint8_t GetFrequencyIndex(double freq);
-
-    /**
-     * Get the frequency fron the frequency index
-    */
-    static double GetFrequencyFromIndex(uint8_t index);
-
-    /**
      * Used to fill the packet with the object's data, size should be set depending on
      * the size of the data of the object to send and the max size of the lora packet
     */
