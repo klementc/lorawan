@@ -8,6 +8,7 @@
 #include "ns3/attribute.h"
 #include "ns3/nstime.h"
 
+
 namespace ns3
 {
 namespace lorawan
@@ -28,10 +29,7 @@ class ObjectCommApplicationMulticast : public Application
     void StartApplication() override;
     void StopApplication() override;
 
-
-    void SetObjectSize(uint64_t);
     void SetObjectID(uint8_t);
-
 
     void SetFPort(uint8_t newPort);
     void SetMinDelayReTx(double delay);
@@ -45,13 +43,17 @@ class ObjectCommApplicationMulticast : public Application
      */
     void SendMulticastInitRequest();
 
-    // Functions to process a specific type of incoming request
+    // initialization of the multicast with specification's commands
     void ProcessClassCSessionReq(Ptr<Packet const> packet);
-    void ProcessMulticastFragRecReq(Ptr<Packet const> packet);
-    void ProcessSingleFragRecReq(Ptr<Packet const> packet);
+    void ProcessFragSessionSetupReq(Ptr<Packet const> packet);
 
-    void AskFragments();
+    // transmission of fragments
+    void SendClassCSetupRequest();
+    void ProcessMulticastFragRecReq(Ptr<Packet const> packet);
+
     std::string PrintFragmentMap();
+
+    void SetMCR(double cr);
 
   private:
     Ptr<ClassAOpenWindowEndDeviceLorawanMac> m_mac; //!< The MAC layer of this node, has to provide open windows
@@ -65,6 +67,15 @@ class ObjectCommApplicationMulticast : public Application
     uint8_t m_dr;
     EventId m_noMoreFragmentsRx;
     std::vector<bool> m_fragmentMap;
+    /**
+     * Stores the number of fragments necessary for decoding the entire object with the redundancy mechanism
+     * We can stop the open window after recieving m_nbFragsToFinish out of size(m_fragmentMap)
+     **/
+    uint64_t m_nbFragsToFinish;
+    // variables related to the fragments and the coding ratio
+    uint64_t m_nbFrags;
+    uint64_t m_fragSize;
+    double m_CR;
 
 };
 

@@ -118,10 +118,17 @@ class ConfirmedMessagesComponent : public NetworkControllerComponent
                           Ptr<NetworkStatus> networkStatus) override;
 
     /**
-     * Use this function to process incoming requests from ED to set up a multicast update over the air
-     * Packet should use Fport=MC_GROUP_SETUP
+     * Function to do the pooling of tx parameters and to use this information to set the tx parameters and fragment size/number.
+     * Receiving packets from port FPORT_ED_MC_POLL
      */
     void ProcessUOTARequest(Ptr<const Packet> packet,
+                          Ptr<EndDeviceStatus> status,
+                          Ptr<NetworkStatus> networkStatus);
+
+    /**
+     * After receiving the fragsetupsessionAns, NS should send the class C scheduling information with a McClassCSessionReq command
+     */
+    void CreateClassCMulticastReq(Ptr<const Packet> packet,
                           Ptr<EndDeviceStatus> status,
                           Ptr<NetworkStatus> networkStatus);
 

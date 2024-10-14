@@ -50,8 +50,17 @@ static ObjectCommHeader getObjHdr(Ptr<Packet const> packet) {
     return oHdr;
 }
 
+static Ptr<Packet> getLoRaPayload(Ptr<Packet const> packet) {
+    ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
+    ns3::lorawan::LorawanMacHeader mHdr;
+    packetCopy->RemoveHeader(mHdr);
+    ns3::lorawan::LoraFrameHeader fHdr;
+    packetCopy->RemoveHeader(fHdr);
+    return packetCopy;
+}
+
 static Ptr<Packet> getObjPayload(Ptr<Packet const> packet) {
-        ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
+    ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
     ns3::lorawan::LorawanMacHeader mHdr;
     packetCopy->RemoveHeader(mHdr);
     ns3::lorawan::LoraFrameHeader fHdr;
@@ -86,14 +95,21 @@ void ObjectCommApplicationMulticast::SetMinDelayReTx(double delay) {
 void ObjectCommApplicationMulticast::callbackCheckEndTx(std::string context, uint8_t reqTx, bool success, Time firstAttempt, Ptr<Packet> packet) {
     LoraFrameHeader fHdr = getFrameHdr(packet);
 
-    NS_LOG_INFO("Finished Tx, device: "<<fHdr.GetAddress()<<" success: "<<success<< " total: "<<m_currentReceived<<" first attempt: "<<firstAttempt<<" fcnt: "<<fHdr.GetFCnt());
+    NS_LOG_INFO("Finished Tx, device: "<<fHdr.GetAddress()<<" success: "<<success<< " total: "<<m_currentReceived<<" first attempt: "<<firstAttempt<<" fcnt: "<<fHdr.GetFCnt()<<" FPort: "<<unsigned(fHdr.GetFPort()));
 
     // if failure, retry later
     if(success == false) {
         // if single fragment failed, resend it
-        if (fHdr.GetFPort() == ObjectCommHeader::FPORT_SINGLE_FRAG) {
-            Simulator::Schedule(Seconds(m_rng->GetInteger(100, 500)), &ObjectCommApplicationMulticast::AskFragments, this);
-        } else {
+        // if (fHdr.GetFPort() == ObjectCommHeader::FPORT_SINGLE_FRAG) {
+        //     Simulator::Schedule(Seconds(m_rng->GetInteger(100, 500)), &ObjectCommApplicationMulticast::AskFragments, this);
+        // }
+        // failed getting class C info? try again TODO: consider the timeout of the frag session
+        if (fHdr.GetFPort() == ObjectCommHeader::FPORT_ED_MC_CLASSC_UP && multicastStarted != false) {
+            NS_LOG_INFO("FAILED GETTING CLASS C FEEDBACK");
+            Simulator::Schedule(Seconds(m_rng->GetInteger(100, 500)), &ObjectCommApplicationMulticast::SendClassCSetupRequest, this);
+        }
+        // avoid restarting if it is already started, but send just the CLASSC request until timeout
+        else if (multicastStarted==false) {
             Simulator::Schedule(Seconds(m_rng->GetInteger(m_min_delay_retransmission, m_min_delay_retransmission+100)), &ObjectCommApplicationMulticast::SendMulticastInitRequest, this);
         }
     }
@@ -101,60 +117,88 @@ void ObjectCommApplicationMulticast::callbackCheckEndTx(std::string context, uin
 
 void ObjectCommApplicationMulticast::ProcessMulticastFragRecReq(Ptr<Packet const> packet)
 {
-    Ptr<Packet> packetCopy = getObjPayload(packet);
-    ObjectCommHeader oHdr = getObjHdr(packet);
+    Ptr<Packet> packetCopy = getLoRaPayload(packet);
+    DownlinkFragment dlHdr;
+    packetCopy->RemoveHeader(dlHdr);
 
-    NS_LOG_INFO("Received ACK on "<< m_mac->GetDeviceAddress()<< " type: "<<(uint64_t)oHdr.GetType()<<" multicastStarted: "<<multicastStarted<<" Fragment: "<< oHdr.GetFragmentNumber());
-    m_currentReceived += packetCopy->GetSize();
-    m_fragmentMap[oHdr.GetFragmentNumber()] = true;
+    // we received a fragment, so we cancel the timeout
+    m_noMoreFragmentsRx.Cancel();
+
+    m_currentReceived += dlHdr.getFragmentSize();
+    m_fragmentMap[dlHdr.getFragNumber()] = true;
     // open window for future reception or finish
-    if (m_currentReceived<m_objectSize) {
+    if (m_currentReceived < m_nbFragsToFinish*m_fragSize) {
         m_mac->openFreeReceiveWindow(m_frequency, m_dr);
+        // we set the timeout again since we are waiting for more fragments
+        // m_noMoreFragmentsRx = Simulator::Schedule(Seconds(1000), &ObjectCommApplicationMulticast::AskFragments, this);
+        // TODO ADD A TIMEOUT
     } else {
-        NS_LOG_DEBUG("Received " << m_currentReceived << "/" << m_objectSize << " bytes: stopping now");
+        NS_LOG_DEBUG("Received " << m_currentReceived << "/" << m_objectSize << " bytes: stopping now, we have enough fragments to reconstruct the original data. Nb_frag_rec / Nb_frag_total: "<<m_nbFragsToFinish<<"/"<<m_nbFrags<<" with CR= "<<m_CR);
         m_mac->closeFreeReceiveWindow();
         multicastStarted = false; // reset for possible future tx or to avoid processing useless packets
     }
     NS_LOG_DEBUG(PrintFragmentMap());
     // cancel previous timeout and schedule new one to stop if not receiving any other fragment
-    m_noMoreFragmentsRx.Cancel();
-    m_noMoreFragmentsRx = Simulator::Schedule(Seconds(1000), &ObjectCommApplicationMulticast::AskFragments, this);
 
-}
-
-void ObjectCommApplicationMulticast::ProcessSingleFragRecReq(Ptr<Packet const> packet)
-{
-    Ptr<Packet> packetCopy = getObjPayload(packet);
-    ObjectCommHeader oHdr = getObjHdr(packet);
-
-    if (m_currentReceived == 0) return; // CHECK WE DIDNT RECEIVE SOMETHING WE SHOULDNT
-    NS_LOG_INFO("Received ACK on "<< m_mac->GetDeviceAddress()<< " type: "<<(uint64_t)oHdr.GetType()<<" multicastStarted: "<<multicastStarted<<" Fragment: "<< oHdr.GetFragmentNumber());
-    m_currentReceived += packetCopy->GetSize();
-    m_fragmentMap[oHdr.GetFragmentNumber()] = true;
-    NS_LOG_DEBUG(PrintFragmentMap());
-    if (m_currentReceived < m_objectSize) {
-        Simulator::Schedule(Seconds(m_rng->GetInteger(50, 100)), &ObjectCommApplicationMulticast::AskFragments, this);
-    } else {
-        NS_LOG_DEBUG("Received " << m_currentReceived << "/" << m_objectSize << " bytes: stopping now");
-        multicastStarted = false; // reset for possible future tx or to avoid processing useless packets
-    }
 }
 
 void ObjectCommApplicationMulticast::ProcessClassCSessionReq(Ptr<Packet const> packet)
 {
-    Ptr<Packet> packetCopy = getObjPayload(packet);
-    ObjectCommHeader oHdr = getObjHdr(packet);
+    McClassCSessionReq cHdr;
+    getLoRaPayload(packet)->RemoveHeader(cHdr);
 
-    NS_LOG_INFO("Received ACK on "<< m_mac->GetDeviceAddress()<< " type: "<<(uint64_t)oHdr.GetType()<<" multicastStarted: "<<multicastStarted);
     // Initialise Rx parameters and schedule the open window wakeup
-    m_frequency = ObjectCommHeader::GetFrequencyFromIndex(oHdr.GetFreq());
-    m_dr = oHdr.GetDR();
-    NS_LOG_DEBUG("ACK type 1 bytes: "<< m_currentReceived << "/" << m_objectSize<< " WINDOW time:" <<Seconds(oHdr.GetDelay()*10).GetSeconds()<<" Nb fragments: "<<oHdr.GetFragmentNumber());
-    NS_LOG_DEBUG("WINDOW time:" <<Seconds(oHdr.GetDelay()*10).GetSeconds());
     multicastStarted = true;
-    m_fragmentMap = std::vector<bool>(oHdr.GetFragmentNumber(), false);
-    Simulator::Schedule(Seconds((uint64_t)oHdr.GetDelay()*10),
-        &ClassAOpenWindowEndDeviceLorawanMac::openFreeReceiveWindow, m_mac, m_frequency, m_dr);
+    m_frequency = cHdr.GetFrequency()/1e4;
+    m_dr = cHdr.GetDR();
+    NS_LOG_INFO("Received class C info: "<<m_frequency<<" "<< (uint32_t) m_dr <<" "<<cHdr.GetSessionTime()<<" scheduled at time "<<Seconds(cHdr.GetSessionTime()));
+
+    //////////// NOW SCHEDULE THE OPEN WINDOW AT THE RIGHT TIME
+    if (Seconds(cHdr.GetSessionTime())<Simulator::Now()) {
+        NS_LOG_INFO("Failed reception because got answer too late, try again later...");
+    } else {
+        Simulator::Schedule(Seconds(cHdr.GetSessionTime())-Simulator::Now(),
+            &ClassAOpenWindowEndDeviceLorawanMac::openFreeReceiveWindow, m_mac, m_frequency, m_dr);
+    }
+
+}
+
+void ObjectCommApplicationMulticast::SendClassCSetupRequest()
+{
+    NS_LOG_INFO("Now send class C session request");
+
+    // just send an empty packet to receive the class C schedule
+    SetFPort(ObjectCommHeader::FPORT_ED_MC_CLASSC_UP);
+    Ptr<Packet> dummypacket = Create<Packet>(0);
+
+    m_mac->Send(dummypacket);
+}
+
+void ObjectCommApplicationMulticast::ProcessFragSessionSetupReq(Ptr<Packet const> packet)
+{
+    // Initiate a communication to get the MulticastSessionReq with FPORT_ED_MC_CLASSC_UP
+    NS_LOG_INFO("Received PACKET FRAGSETUP from "<<m_mac->GetDeviceAddress());
+
+    auto pck = getLoRaPayload(packet);
+    FragSessionSetupReq req(0,0,0,0,0,0);
+    pck->RemoveHeader(req);
+
+    // Initialise variables for reception
+    m_currentReceived = 0;
+    m_nbFrags = req.getNbFrag();
+    m_fragSize = req.getFragSize();
+    m_objectSize = m_nbFrags * m_fragSize;
+    m_fragmentMap = std::vector<bool>(req.getNbFrag(), false);
+    /**
+     * m_nbFragsToFinish is the average number of blocks to recover the original object
+     * the value is based on Gallager's  results showing the average number of fragments
+     * to receive for full receptino. We use it to avoid simulating the whole recovery process
+     */
+    NS_LOG_INFO("Using CR= "<<m_CR);
+    m_nbFragsToFinish = (m_CR * (double)m_nbFrags) + 2;
+    NS_LOG_DEBUG("ACK Frag setup: Object of " << m_objectSize<< "bytes, Nb fragments: "<<m_fragmentMap.size()<<" fragment Size: "<< (uint32_t)req.getFragSize());
+
+    Simulator::Schedule(Seconds(20), &ObjectCommApplicationMulticast::SendClassCSetupRequest, this);
 }
 
 void ObjectCommApplicationMulticast::callbackReception(std::string context, Ptr<Packet const> packet) {
@@ -163,39 +207,32 @@ void ObjectCommApplicationMulticast::callbackReception(std::string context, Ptr<
     // Setup an open window upon CLASSC_SESS request acknowledgement
     if (fHdr.GetFPort()==ObjectCommHeader::FPORT_CLASSC_SESS && ! multicastStarted)
         ProcessClassCSessionReq(packet);
+    else if (fHdr.GetFPort()==ObjectCommHeader::FPORT_FRAG_SESS_SETUP && ! multicastStarted)
+        ProcessFragSessionSetupReq(packet);
     // Receive a fragment upon MULTICAST downlink receptions, count size of received data
     else if (fHdr.GetFPort()==ObjectCommHeader::FPORT_MULTICAST && multicastStarted)
         ProcessMulticastFragRecReq(packet);
     // Receive a single fragment downlink, add it to object data
-    else if (fHdr.GetFPort()==ObjectCommHeader::FPORT_SINGLE_FRAG && multicastStarted)
-        ProcessSingleFragRecReq(packet);
+    // else if (fHdr.GetFPort()==ObjectCommHeader::FPORT_SINGLE_FRAG && multicastStarted)
+    //     ProcessSingleFragRecReq(packet);
     // if the message is an other type of message not for us, reopen the window, to manage kind of "class C" in the ns-3 module developped for class A
     else {
         NS_LOG_DEBUG("NOT SMART BUT REOPEN WINDOW, THIS MESSAGE WAS PUTTING THE DEVICE TO SLEEP");
         m_mac->openFreeReceiveWindow(m_frequency, m_dr);
+        return;
     }
+    Ptr<Packet> packetCopy = getObjPayload(packet);
+    ObjectCommHeader req;
+    packetCopy->RemoveHeader(req);
+
+    NS_LOG_INFO("Received ACK on "<< m_mac->GetDeviceAddress()<< " type: "<<(uint64_t)req.getCommandType()<<" multicastStarted: "<<multicastStarted<<" FPort: "<<unsigned(fHdr.GetFPort()));
 }
 
-void ObjectCommApplicationMulticast::AskFragments() {
-    // first stop the open rx window
-    if(m_mac->checkIsInOpenSlot())
-        m_mac->closeFreeReceiveWindow();
-    SetFPort(ObjectCommHeader::FPORT_SINGLE_FRAG);
-
-    // find a fragment to request and send the request
-    for(size_t i=0; i<m_fragmentMap.size(); i++) {
-        if (m_fragmentMap[i] == false) {
-            Ptr<Packet> packet = Create<Packet>(0);
-            ObjectCommHeader objHeader;
-            objHeader.SetObjID(m_objectID);
-            objHeader.SetType(3);
-            objHeader.SetFragmentNumber(i);
-            packet->AddHeader(objHeader);
-            NS_LOG_DEBUG("Ask for single fragment "<<(uint64_t) objHeader.GetFragmentNumber());
-            m_mac->Send(packet);
-            break;
-        }
-    }
+void ObjectCommApplicationMulticast::SetMCR(double cr)
+{
+    NS_LOG_FUNCTION(cr);
+    NS_LOG_INFO("CR is set to "<< cr);
+    m_CR = cr;
 }
 
 std::string ObjectCommApplicationMulticast::PrintFragmentMap() {
@@ -217,7 +254,7 @@ void ObjectCommApplicationMulticast::SendMulticastInitRequest()
 {
     NS_LOG_FUNCTION(this);
     // Set the FPort according to the standard for this step
-    SetFPort(ObjectCommHeader::FPORT_MC_GR_SETUP);
+    SetFPort(ObjectCommHeader::FPORT_ED_MC_POLL);
     m_mac->SetMaxNumberOfTransmissions(1);
 
     Ptr<Packet> packet = Create<Packet>(0);
@@ -245,6 +282,7 @@ void ObjectCommApplicationMulticast::StartApplication()
     m_currentReceived = 0;
     m_mac->TraceConnect("ReceivedPacket", "Received data", MakeCallback(&ObjectCommApplicationMulticast::callbackReception, this));
     m_mac->TraceConnect("RequiredTransmissions", "Failed or not", MakeCallback(&ObjectCommApplicationMulticast::callbackCheckEndTx, this));
+
     // ask for the first fragment
     SendMulticastInitRequest();
 }
@@ -253,10 +291,6 @@ void ObjectCommApplicationMulticast::StopApplication()
 {
     NS_LOG_FUNCTION_NOARGS();
     // log how much was sent, received etc
-}
-
-void ObjectCommApplicationMulticast::SetObjectSize(uint64_t size) {
-    m_objectSize = size;
 }
 
 }

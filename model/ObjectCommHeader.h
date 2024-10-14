@@ -57,13 +57,19 @@ class ObjectCommHeader : public Header {
     TypeId GetInstanceTypeId() const override;
 
     // FPORTS used at the different steps for the multicast exchange session
+    static const uint8_t FPORT_MULTICAST = 200;
     static const uint8_t FPORT_MC_GR_SETUP = 200;
-    static const uint8_t FPORT_FRAG_SESS_SETUP = 201;
-    static const uint8_t FPORT_CLOCK_SYNCH = 202;
-    static const uint8_t FPORT_CLASSC_SESS = 203;
-    static const uint8_t FPORT_MULTICAST = 204;
+    static const uint8_t FPORT_ED_MC_POLL = 28;
+    static const uint8_t FPORT_ED_MC_CLASSC_UP = 29;
+    static const uint8_t FPORT_FRAG_SESS_SETUP = 202;
+    static const uint8_t FPORT_CLASSC_SESS = 204;
+
+    static const uint8_t FPORT_CLOCK_SYNCH = 203;
     static const uint8_t FPORT_VALIDATION = 205;
     static const uint8_t FPORT_SINGLE_FRAG = 206;
+
+    ObjectCommHeader();
+    ObjectCommHeader(uint8_t id);
 
     void SetObjID(uint8_t);
 
@@ -73,14 +79,6 @@ class ObjectCommHeader : public Header {
 
     void SetType(uint8_t type);
 
-    void SetFreq(uint8_t freq);
-
-    void SetDR(uint8_t dr);
-
-    void SetDelay(uint8_t delay);
-
-    void SetFragmentNumber(uint16_t number);
-
     void Print(std::ostream& os) const override;
 
     uint32_t GetSerializedSize() const override;
@@ -89,15 +87,7 @@ class ObjectCommHeader : public Header {
 
     uint32_t Deserialize(Buffer::Iterator start) override;
 
-    uint8_t GetFreq();
-
-    uint8_t GetDR();
-
-    uint8_t GetType();
-
-    uint8_t GetDelay();
-
-    uint16_t GetFragmentNumber();
+    uint8_t getCID() const;
 
     /**
      * Get the frequency index, used to set DL freq in the packet without a byte instead of a double
@@ -115,13 +105,9 @@ class ObjectCommHeader : public Header {
     */
     //void SetPayloadSize(uint16_t size);
 
-  private:
+  protected:
+    uint8_t m_cID;
     uint8_t m_objID{42};
-    uint8_t m_type{0};
-    uint8_t m_freq{0};
-    uint8_t m_dr{0};
-    uint8_t m_delay{0};
-    uint16_t m_fragmentNumber{0};
 };
 
 class FragSessionSetupReq : public ObjectCommHeader {
@@ -136,6 +122,7 @@ class FragSessionSetupReq : public ObjectCommHeader {
    * FragSession Fields  |RFU   |FragIndex |McGroupBitMask|
    * Size (bits)         | 2bits| 2bits    | 4bits        |
    */
+  public:
   FragSessionSetupReq(uint8_t fragSession,
                       uint16_t nbFrag,
                       uint8_t fragSize,
@@ -152,6 +139,9 @@ class FragSessionSetupReq : public ObjectCommHeader {
   uint32_t Deserialize(Buffer::Iterator start) override;
 
   MulticastCommandType getCommandType() const override;
+
+  uint16_t getNbFrag() const;
+  uint8_t getFragSize() const;
 
   private:
     uint8_t m_fragSession;
@@ -174,6 +164,7 @@ class FragSessionSetupAns : public ObjectCommHeader {
    * Bits       | 7:6     | 5:4 | 3               | 2                              | 1                | 0                   |
     Status bits |FragIndex| RFU | Wrong Descriptor| FragSession index not supported| Not enough Memory| Encoding unsupported|
    */
+  public:
   FragSessionSetupAns();
 
   void Print(std::ostream& os) const override;
@@ -203,6 +194,7 @@ class DownlinkFragment :public ObjectCommHeader {
    * Index&N Fields | FragIndex | N     |
    * Size (bits)    | 2bits     | 14bits|
    */
+  public:
   DownlinkFragment();
 
   void Print(std::ostream& os) const override;
@@ -217,6 +209,9 @@ class DownlinkFragment :public ObjectCommHeader {
   void setFragIndex(uint16_t fragIndex);
   void setFragNumber(uint16_t N);
   void setFragmentSize(uint32_t size);
+
+  uint16_t getFragNumber();
+  uint32_t getFragmentSize();
 
   private:
     int32_t m_fragmentSize;
@@ -239,6 +234,7 @@ class McClassCSessionReq :public ObjectCommHeader {
    * Size (bits)            | 4bits | 4bits
    *
    */
+  public:
   McClassCSessionReq();
 
   void Print(std::ostream& os) const override;
@@ -255,6 +251,9 @@ class McClassCSessionReq :public ObjectCommHeader {
   void setSessionTimeout(uint8_t sessionTimeOut);
   void setFrequency(uint32_t freq);
   void setDR(uint8_t dr);
+  uint32_t GetFrequency();
+  uint8_t GetDR();
+  uint32_t GetSessionTime();
 
   private:
     uint8_t m_mcGroupIdHeader;
@@ -276,7 +275,7 @@ class McClassCSessionAns :public ObjectCommHeader {
    * Field        | Status&McGroupID | (cond)TimeToStart
    * Size (bytes) | 1                | 3
    */
-
+  public:
   McClassCSessionAns();
 
   void Print(std::ostream& os) const override;

@@ -131,6 +131,7 @@ main(int argc, char* argv[])
     LogComponentEnableAll(LOG_PREFIX_TIME);
 
 
+    Ptr<UniformRandomVariable> rng = CreateObject<UniformRandomVariable>();
 
     // Create a simple wireless channel
     ///////////////////////////////////
@@ -151,7 +152,7 @@ main(int argc, char* argv[])
     MobilityHelper mobilityGw;
     Ptr<ListPositionAllocator> positionAllocEd = CreateObject<ListPositionAllocator>();
     for(int i=0;i<nb_ED;i++) {
-        positionAllocEd->Add(Vector(dist, 0.0, 0.0));
+        positionAllocEd->Add(Vector(rng->GetValue(0, dist), rng->GetValue(0, dist), 0));
     }
     mobilityEd.SetPositionAllocator(positionAllocEd);
     mobilityEd.SetMobilityModel("ns3::ConstantPositionMobilityModel");
@@ -191,8 +192,6 @@ main(int argc, char* argv[])
     macHelper.SetAddressGenerator(addrGen);
     macHelper.SetRegion(LorawanMacHelper::EU);
 
-    Ptr<UniformRandomVariable> rng = CreateObject<UniformRandomVariable>();
-
     NetDeviceContainer netdevs = helper.Install(phyHelper, macHelper, endDevices);
     for(NetDeviceContainer::Iterator dev = netdevs.Begin(); dev<netdevs.End(); dev++) {
         auto ldev = (*dev)->GetObject<LoraNetDevice>();
@@ -207,7 +206,6 @@ main(int argc, char* argv[])
         app->SetStartTime(Seconds(rng->GetInteger(10, 100)));
         //if (i%2 == 0) app->SetStartTime(Time::FromDouble(rng->GetInteger(10, 100), Time::Unit::S));
         //else          app->SetStartTime(Time::FromDouble(rng->GetInteger(3000, 3000), Time::Unit::S));
-        app->SetObjectSize(obj_size);
         app->SetNode(endDevices.Get(i));
         app->SetMinDelayReTx(delayReTx);
         endDevices.Get(i)->AddApplication(app);

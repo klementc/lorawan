@@ -133,8 +133,11 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
     if (fHdr.GetFPort() == ObjectCommHeader::FPORT_SINGLE_FRAG) {
         ProcessSingleFragmentReq(packet, status, networkStatus);
     }
-    else if (fHdr.GetFPort() == ObjectCommHeader::FPORT_MC_GR_SETUP){
+    else if (fHdr.GetFPort() == ObjectCommHeader::FPORT_ED_MC_POLL){
         ProcessUOTARequest(packet, status, networkStatus);
+    }
+    else if (fHdr.GetFPort() == ObjectCommHeader::FPORT_ED_MC_CLASSC_UP) {
+        CreateClassCMulticastReq(packet, status, networkStatus);
     }
     else if (mHdr.GetMType() == LorawanMacHeader::CONFIRMED_DATA_UP)
     {
@@ -222,36 +225,37 @@ void ConfirmedMessagesComponent::ProcessSingleFragmentReq(Ptr<const Packet> pack
 
     NS_LOG_FUNCTION(this->GetTypeId() << packet << networkStatus);
 
-    LoraFrameHeader fHdr = getFrameHdr(packet);
-    ObjectCommHeader oHdr = getObjHdr(packet);
+    // LoraFrameHeader fHdr = getFrameHdr(packet);
+    // ObjectCommHeader oHdr = getObjHdr(packet);
 
-    NS_LOG_INFO("Single Fragment Tx: # "<<oHdr.GetFragmentNumber());
-    // create ACK reply with payload
-    status->m_reply.frameHeader.SetFPort(ObjectCommHeader::FPORT_SINGLE_FRAG);
-    status->m_reply.frameHeader.SetAsDownlink();
-    status->m_reply.frameHeader.SetAck(true);
-    status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
-    status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
-    status->m_reply.needsReply = true;
+    // NS_LOG_INFO("Single Fragment Tx: # "<<oHdr.GetFragmentNumber());
+    // // create ACK reply with payload
+    // status->m_reply.frameHeader.SetFPort(ObjectCommHeader::FPORT_SINGLE_FRAG);
+    // status->m_reply.frameHeader.SetAsDownlink();
+    // status->m_reply.frameHeader.SetAck(true);
+    // status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
+    // status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
+    // status->m_reply.needsReply = true;
 
-    Ptr<Packet> myPacket = packet->Copy();
-    LoraTag tagtmp;
-    myPacket->RemovePacketTag(tagtmp);
-    int drVal = -1;
-    for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tagtmp.GetSpreadingFactor()) {drVal=i;break;}}
-    auto retFragment = Create<Packet>(maxPLsize[drVal]-oHdr.GetSerializedSize());
-    oHdr.SetType(3);
-    retFragment->AddHeader(oHdr);
-    status->m_reply.payload = retFragment;
+    // Ptr<Packet> myPacket = packet->Copy();
+    // LoraTag tagtmp;
+    // myPacket->RemovePacketTag(tagtmp);
+    // int drVal = -1;
+    // for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tagtmp.GetSpreadingFactor()) {drVal=i;break;}}
+    // auto retFragment = Create<Packet>(maxPLsize[drVal]-oHdr.GetSerializedSize());
+    // oHdr.SetType(3);
+    // retFragment->AddHeader(oHdr);
+    // status->m_reply.payload = retFragment;
 }
 
 void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
                                              Ptr<EndDeviceStatus> status,
                                              Ptr<NetworkStatus> networkStatus)
 {
+    NS_LOG_FUNCTION(this->GetTypeId() << packet << networkStatus);
     static std::pair<LoraTag, LoraDeviceAddress> dest;
     static bool isDestDefined = false;
-    NS_LOG_FUNCTION(this->GetTypeId() << packet << networkStatus);
+    LoraFrameHeader fHdr = getFrameHdr(packet);
 
     if(currentState.first == ObjectPhase::pool && currentState.second+1000<=(Simulator::Now()).GetSeconds()) {
         // must switch to advertising phase
@@ -270,7 +274,6 @@ void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
         Ptr<Packet> myPacket = packet->Copy();
         LoraTag tagtmp;
         myPacket->RemovePacketTag(tagtmp);
-        LoraFrameHeader fHdr = getFrameHdr(packet);
         registeredNodes.push_back(std::make_pair(tagtmp, fHdr.GetAddress()));
 
     } else if (currentState.first == ObjectPhase::advertize) {
@@ -282,10 +285,10 @@ void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
 
         // Acknowledge clients with the broadcast information
         NS_LOG_INFO("ADVERTISING");
-        status->m_reply.frameHeader.SetFPort(ObjectCommHeader::FPORT_CLASSC_SESS);
+        status->m_reply.frameHeader.SetFPort(ObjectCommHeader::FPORT_FRAG_SESS_SETUP);
         status->m_reply.frameHeader.SetAsDownlink();
         status->m_reply.frameHeader.SetAck(true);
-        status->m_reply.frameHeader.SetAddress(dest.second);
+        status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
         status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
         status->m_reply.needsReply = true;
         auto retPL = Create<Packet>(0);
@@ -295,34 +298,72 @@ void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
             freq = dest.first.GetFrequency();
             dr = 0;
             for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==dest.first.GetSpreadingFactor()) {dr=i;break;}}
-            emitTime = (Simulator::Now()+Seconds(1000)).GetSeconds();
+            emitTime = (Simulator::Now()+Seconds(3600)).GetSeconds();
         }
-        ObjectCommHeader oHdr;
-        oHdr.SetFreq(ObjectCommHeader::GetFrequencyIndex(freq));
-        oHdr.SetDR(dr);
+
+        ////////////// PART 1 SEND THE FRAG SESSION REQUEST AND SCHEDULE THE EMISSION
+        DownlinkFragment fragUseless; // just to get the size of the header
         auto plSize = 0.;
-        oHdr.SetType(1); // just to get the size of the header with fragment
-        for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==dest.first.GetSpreadingFactor()) {plSize = maxPLsize[i]-oHdr.GetSerializedSize();break;}}
-        oHdr.SetFragmentNumber(std::ceil( OBJECT_SIZE_BYTES/plSize));
+        for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==dest.first.GetSpreadingFactor()) {plSize = maxPLsize[i]-fragUseless.GetSerializedSize();break;}}
+        double nbFragmentsNoRedundancy = std::ceil(OBJECT_SIZE_BYTES/plSize);
+        uint32_t nbFragmentsWithRedundancy = std::ceil(nbFragmentsNoRedundancy/CR);
+        FragSessionSetupReq fragHdr(0,
+                                    nbFragmentsWithRedundancy,
+                                    static_cast<uint8_t>(plSize),
+                                    0, // TODO
+                                    0,
+                                    0);
 
-        uint8_t nbTicks = (uint8_t)(floor((Seconds(emitTime)-Simulator::Now()).GetSeconds()/10))-1;
-        // special case cause nbTicks can underflow and lead to unwanted value, cancel because you wont have time to send the ACK
-        if ((floor((Seconds(emitTime)-Simulator::Now()).GetSeconds()/10))-1 < 0) {
-            status->m_reply.frameHeader.SetAck(false);
-            status->m_reply.needsReply = false;
-        }
-        oHdr.SetDelay(nbTicks);
-
-        retPL->AddHeader(oHdr);
+        retPL->AddHeader(fragHdr);
         status->m_reply.payload = retPL;
+        std::stringstream str;
+        fragHdr.Print(str);
+        NS_LOG_DEBUG("Send DownlinkFragment"<<str.str());
 
-        NS_LOG_INFO("Request for object ID: "<< (uint64_t)oHdr.GetObjID()<< " already sent: "<<alreadyScheduled);
+        NS_LOG_INFO("Request for object ID: "<< (uint64_t)fragHdr.GetObjID()<< " already sent: "<<alreadyScheduled);
+
+        // Schedule the future emission
         if(! alreadyScheduled) {
             EmitObject(networkStatus->GetReplyForDevice(dest.second, 3), networkStatus);
             alreadyScheduled = true;
         }
     }
+}
 
+void
+ConfirmedMessagesComponent::CreateClassCMulticastReq(Ptr<const Packet> packet,
+                                             Ptr<EndDeviceStatus> status,
+                                             Ptr<NetworkStatus> networkStatus)
+{
+
+    // PREPARE THE CLASS C SESSION REQUEST
+    McClassCSessionReq sHdr;
+    sHdr.setDR(dr);
+    sHdr.setFrequency(freq*1e4); // freq is in MHz, multiply by 1e6, divide by 100, see specification
+    uint32_t sessionTime = static_cast<uint32_t>(emitTime-1);
+    // If someone asks for opening the session too late. TODO: setup for starting reception and using redundant fragments for finishing
+    if (sessionTime < 0) {
+        status->m_reply.frameHeader.SetAck(false);
+        status->m_reply.needsReply = false;
+    }
+    sHdr.setSessionTime(sessionTime);
+    sHdr.setSessionTimeout(0); // TODO: take the time out value in the client
+
+    // prepare the ACK
+    LoraFrameHeader fHdr = getFrameHdr(packet);
+
+    status->m_reply.frameHeader.SetFPort(ObjectCommHeader::FPORT_CLASSC_SESS);
+    status->m_reply.frameHeader.SetAsDownlink();
+    status->m_reply.frameHeader.SetAck(true);
+    status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
+    status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
+    status->m_reply.needsReply = true;
+
+    auto retPL = Create<Packet>(0);
+    retPL->AddHeader(sHdr);
+    status->m_reply.payload = retPL;
+
+    NS_LOG_INFO("Send Class C Session Request to "<<fHdr.GetAddress());
 }
 
 void ConfirmedMessagesComponent::SwitchToState(ObjectPhase phase){
@@ -338,7 +379,7 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
 
     LorawanMacHeader mHdr;
     LoraFrameHeader fHdr;
-    ObjectCommHeader oHdr;
+    DownlinkFragment oHdr;
     LoraTag tag;
 
     Ptr<Packet> pcktdata = packetTemplate->Copy();
@@ -360,9 +401,6 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
 
     // compute the size of the payload we are able to send given the tx parameters
     // rp002-1-0-4-regional-parameters.pdf page 48 to find the max payload sizes to use
-    oHdr.SetType(2);
-    oHdr.SetFreq(oHdr.GetFrequencyIndex(freq));
-    oHdr.SetDR(dr);
     fHdr.SetFPort(ObjectCommHeader::FPORT_MULTICAST);
 
     int payloadSize = maxPLsize[dr]-oHdr.GetSerializedSize();
@@ -370,25 +408,29 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
     Simulator::Schedule(std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0)),
         &ConfirmedMessagesComponent::SwitchToState, this, ObjectPhase::send);
 
-    for(int nbSent=0;nbSent<OBJECT_SIZE_BYTES; nbSent+=payloadSize) {
-        NS_LOG_INFO("Schedule SendThroughGW after " << emitTime << " seconds, total="<<nbSent<<"/"<<OBJECT_SIZE_BYTES/payloadSize <<" DR: "<<(uint64_t)dr<<" Freq: "<<freq);
+    double nbFragmentsNoRedundancy = std::ceil(OBJECT_SIZE_BYTES/payloadSize);
+    uint32_t nbFragmentsWithRedundancy = std::ceil(nbFragmentsNoRedundancy/CR);
+    NS_LOG_INFO("nb fragments no red: "<<nbFragmentsNoRedundancy<<" with CR="<<CR<<", nb fragments ="<<nbFragmentsWithRedundancy);
+    for(int nbSent=0;nbSent<nbFragmentsWithRedundancy; nbSent++) {
+        NS_LOG_INFO("Schedule SendThroughGW after " << emitTime << " seconds, total="<<nbSent<<"/"<<OBJECT_SIZE_BYTES/payloadSize <<" DR: "<<(uint64_t)dr<<" Freq: "<<freq<<" payload size: "<<payloadSize);
 
-        Ptr<Packet> pktPayload = Create<Packet>(std::min(OBJECT_SIZE_BYTES-nbSent, payloadSize));
+        uint32_t fragmentSize = payloadSize; // null bytes padding if too big
+        Ptr<Packet> pktPayload = Create<Packet>();
+
         // add packet fragment number
-        oHdr.SetFragmentNumber(nbSent/payloadSize);
+        oHdr.setFragIndex(0); // TODO: change to have several multicasts in parallel
+        oHdr.setFragNumber(nbSent);
+        oHdr.setFragmentSize(fragmentSize);
 
         pktPayload->AddHeader(oHdr);
         pktPayload->AddHeader(fHdr);
         pktPayload->AddHeader(mHdr);
         tag.SetDataRate(dr);
-        //tag.SetSpreadingFactor(sf);
         tag.SetFrequency(freq);
         pktPayload->AddPacketTag(tag);
 
-
-        Simulator::Schedule(std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0))+Seconds(nbSent/payloadSize),
+        Simulator::Schedule(std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0))+Seconds(nbSent),
             &NetworkStatus::SendThroughGateway, networkStatus, pktPayload, gwToUse);
-        //networkStatus->SendThroughGateway(pktPayload, gwToUse);
     }
 
     // GO BACK TO INIT PHASE AFTER EVERYTHING IS FINISHED

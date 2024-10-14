@@ -26,6 +26,15 @@ ObjectCommHeader::GetInstanceTypeId() const
     return GetTypeId();
 }
 
+ObjectCommHeader::ObjectCommHeader()
+    : m_cID(0xFF)
+{}
+
+ObjectCommHeader::ObjectCommHeader(uint8_t id)
+    : m_cID(id)
+{}
+
+
 MulticastCommandType ObjectCommHeader::getCommandType() const
 {
     return MulticastCommandType::DUMMY_COMMAND_TO_REMOVE;
@@ -39,6 +48,11 @@ ObjectCommHeader::SetObjID(uint8_t id)
 }
 
 uint8_t
+ObjectCommHeader::getCID() const
+{
+    return m_cID;
+}
+uint8_t
 ObjectCommHeader::GetObjID()
 {
     NS_LOG_FUNCTION_NOARGS();
@@ -46,49 +60,16 @@ ObjectCommHeader::GetObjID()
 }
 
 void
-ObjectCommHeader::SetType(uint8_t type)
-{
-    NS_LOG_FUNCTION(type);
-    m_type = type;
-}
-
-void
-ObjectCommHeader::SetFreq(uint8_t freq)
-{
-    NS_LOG_FUNCTION(freq);
-    m_freq = freq;
-}
-
-void
-ObjectCommHeader::SetDR(uint8_t dr)
-{
-    NS_LOG_FUNCTION(dr);
-    m_dr = dr;
-}
-
-void
-ObjectCommHeader::SetFragmentNumber(uint16_t number)
-{
-    NS_LOG_FUNCTION(number);
-    m_fragmentNumber = number;
-}
-
-void
 ObjectCommHeader::Print(std::ostream& os) const
 {
-    os << "Object comm header size:" << GetSerializedSize() << " object ID: " << (uint64_t)m_objID <<
-        " msg type: " << (uint64_t)m_type << " freq: " << (uint64_t)m_freq << " DR: " << (uint64_t)m_dr <<
-        " delay: " << (uint64_t)m_delay << " Fragment #: "<< (uint64_t)m_fragmentNumber;
+    os << "Object comm header size:" << GetSerializedSize() << " object ID: " << (uint64_t)m_objID;
+     //<<       " msg type: " << (uint64_t)m_type << " freq: " << (uint64_t)m_freq << " DR: " << (uint64_t)m_dr << " delay: " << (uint64_t)m_delay << " Fragment #: "<< (uint64_t)m_fragmentNumber;
 }
 
 uint32_t
 ObjectCommHeader::GetSerializedSize() const
 {
-    // account for the additional delay byte
-    if (m_type == 0) return 2; // UL request
-    if (m_type == 1) return 6; // DL request ack
-    if (m_type == 2 || m_type == 3) return 4; // DL or UL fragment part or request
-    return 0;
+    return 1;
 }
 
 void
@@ -97,15 +78,6 @@ ObjectCommHeader::Serialize(Buffer::Iterator start) const
     Buffer::Iterator i = start;
 
     i.WriteU8(m_objID);
-    i.WriteU8(m_type);
-
-    if (m_type == 1) {
-        i.WriteU8((m_freq<<4)+m_dr); // 4 left bits = freq, 4 right bits = dr
-        i.WriteU8(m_delay);
-    }
-    if (m_type==1 || m_type == 2 || m_type == 3) {
-        i.WriteU16(m_fragmentNumber);
-    }
 }
 
 uint32_t
@@ -113,17 +85,6 @@ ObjectCommHeader::Deserialize(Buffer::Iterator start)
 {
     Buffer::Iterator i = start;
     m_objID = i.ReadU8();
-    m_type = i.ReadU8();
-
-    if (m_type == 1) {
-        uint8_t txParams = i.ReadU8();
-        m_freq = (txParams>>4) & 0x0F; // 4 leftmost bits
-        m_dr = txParams & 0x0F; // 4 rightmost bits
-        m_delay = i.ReadU8();
-    }
-    if (m_type==1 || m_type == 2 || m_type == 3) {
-        m_fragmentNumber = i.ReadU16();
-    }
 
     return GetSerializedSize();
 }
@@ -152,42 +113,6 @@ ObjectCommHeader::GetFrequencyFromIndex(uint8_t index)
     return freq;
 }
 
-uint8_t
-ObjectCommHeader::GetFreq()
-{
-    return m_freq;
-}
-
-uint8_t
-ObjectCommHeader::GetDR()
-{
-    return m_dr;
-}
-
-uint8_t
-ObjectCommHeader::GetType()
-{
-    return m_type;
-}
-
-void
-ObjectCommHeader::SetDelay(uint8_t delay)
-{
-    m_delay = delay;
-}
-
-uint8_t
-ObjectCommHeader::GetDelay()
-{
-    return m_delay;
-}
-
-uint16_t
-ObjectCommHeader::GetFragmentNumber()
-{
-    return m_fragmentNumber;
-}
-
 /******************************
  * FragSessionSetupReq
  ***************************** */
@@ -198,7 +123,8 @@ FragSessionSetupReq::FragSessionSetupReq(uint8_t fragSession,
                       uint8_t control,
                       uint8_t padding,
                       uint32_t descriptor)
-    : m_fragSession(fragSession), m_nbFrag(nbFrag), m_fragSize(fragSize),
+    : ObjectCommHeader(0x02),
+    m_fragSession(fragSession), m_nbFrag(nbFrag), m_fragSize(fragSize),
     m_control(control), m_padding(padding), m_descriptor(descriptor)
 {
     NS_LOG_FUNCTION(this << nbFrag << fragSize << control << padding << descriptor);
@@ -220,7 +146,7 @@ uint32_t
 FragSessionSetupReq::GetSerializedSize() const
 {
     NS_LOG_FUNCTION_NOARGS();
-    return 10;
+    return 10; //1 for the cid
 }
 
 void
@@ -258,12 +184,24 @@ FragSessionSetupReq::getCommandType() const
     return MulticastCommandType::FRAG_SESSION_SETUP_REQ;
 }
 
+uint16_t
+FragSessionSetupReq::getNbFrag() const
+{
+    return m_nbFrag;
+}
+
+uint8_t
+FragSessionSetupReq::getFragSize() const
+{
+    return m_fragSize;
+}
+
 
 /******************************
  * FragSessionSetupAns
  ****************************** */
 FragSessionSetupAns::FragSessionSetupAns()
-    : m_statusBitMask(0)
+    : ObjectCommHeader(0x02), m_statusBitMask(0)
 {}
 
 void FragSessionSetupAns::Print(std::ostream& os) const
@@ -322,7 +260,7 @@ FragSessionSetupAns::setFragIndex(uint8_t fragIndex)
  * Downlink Fragment
  ****************************** */
 DownlinkFragment::DownlinkFragment()
-    : m_fragmentSize(0), m_indexN(0)
+    : ObjectCommHeader(0x08), m_fragmentSize(0), m_indexN(0)
 {}
 
 void
@@ -394,12 +332,15 @@ uint32_t
 DownlinkFragment::Deserialize(Buffer::Iterator start)
 {
     NS_LOG_FUNCTION_NOARGS();
-    NS_ASSERT(m_fragmentSize > 0); // user should define the fragment size with predefined value before calling the function
 
     m_indexN = start.ReadU16();
-    for(int i=0;i<m_fragmentSize;i++) {
-        fragment.push_back(start.ReadU8());
+    //NS_ASSERT(m_indexN > 0); // user should define the fragment size with predefined value before calling the function
+
+    while(! start.IsEnd()) {
+        auto v = start.ReadU8();
+        fragment.push_back(v);
     }
+    m_fragmentSize = fragment.size();
     return GetSerializedSize();
 }
 
@@ -409,12 +350,27 @@ DownlinkFragment::getCommandType() const
     return MulticastCommandType::DATA_FRAGMENT;
 }
 
+uint16_t
+DownlinkFragment::getFragNumber()
+{
+    // mask the first 2 bits
+    return m_indexN & 0x3FFF;
+}
+
+uint32_t
+DownlinkFragment::getFragmentSize()
+{
+    return m_fragmentSize;
+}
+
+
 /******************************
  * McClassCSessionReq
  ****************************** */
 
 McClassCSessionReq::McClassCSessionReq()
-    : m_mcGroupIdHeader(0),
+    : ObjectCommHeader(0x04),
+      m_mcGroupIdHeader(0),
       m_sessionTime(0),
       m_sessionTimeOut(10),
       m_dlFrequency(0),
@@ -514,11 +470,29 @@ McClassCSessionReq::setDR(uint8_t dr)
     NS_LOG_DEBUG("DR: "<<oldr<<" -> "<<(uint32_t)m_dr);
 }
 
+uint32_t
+McClassCSessionReq::GetFrequency()
+{
+    return m_dlFrequency;
+}
+
+uint8_t
+McClassCSessionReq::GetDR()
+{
+    return m_dr;
+}
+
+uint32_t
+McClassCSessionReq::GetSessionTime()
+{
+    return m_sessionTime;
+}
 /******************************
  * McClassCSessionAns
  ****************************** */
 McClassCSessionAns::McClassCSessionAns()
-    : m_statusMcGroupID(0),
+    : ObjectCommHeader(0x04),
+      m_statusMcGroupID(0),
       m_timeToStart(0)
 {}
 

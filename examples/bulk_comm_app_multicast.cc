@@ -79,17 +79,22 @@ main(int argc, char* argv[])
     int seed = 1;
     double dist = 0;
     double delayReTx = 50;
+    double codingRatio = 0.9; // ~10% of error supported
+    std::string position = "Fixed"; // "Fixed" for stations at the exact distance dist to the GW, or "Random" for machines at a random distance between 0 and dist
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("verbose", "Whether to print output or not", verbose);
     cmd.AddValue("nb_ED", "Number of end devices in the simulated platform", nb_ED);
     cmd.AddValue("obj_size", "size of the transfered object in bytes", obj_size);
     cmd.AddValue("seed", "random seed", seed);
-    cmd.AddValue("dist", "distance between the ED and the GW", dist);
+    cmd.AddValue("dist", "distance between the ED and the GW (x and y maximum distance for Random positionning)", dist);
     cmd.AddValue("delayReTx", "delay between consecutive request after a communication fail", delayReTx);
-
+    cmd.AddValue("position", "Fixed=exactly dist from the GW, Random=random position between 0 and dist to the GW", position);
+    cmd.AddValue("CR", "Coding ratio to be used to code the data with redundancy", codingRatio);
     cmd.Parse(argc, argv);
 
+
+    CR = codingRatio;
     OBJECT_SIZE_BYTES = obj_size;
 
     ns3::RngSeedManager::SetSeed(seed);
@@ -100,9 +105,9 @@ main(int argc, char* argv[])
     LogComponentEnable("BulkCommAppMulticast", LOG_LEVEL_ALL);
     LogComponentEnable("ClassAOpenWindowEndDeviceLorawanMac", LOG_LEVEL_INFO);
     LogComponentEnable("ClassAEndDeviceLorawanMac", LOG_LEVEL_INFO);
-    LogComponentEnable("ObjectCommApplicationMulticast", LOG_LEVEL_INFO);
-    LogComponentEnable("NetworkControllerComponent", LOG_LEVEL_INFO);
-    //LogComponentEnable("BufferedForwarder", LOG_LEVEL_ALL);
+    LogComponentEnable("ObjectCommApplicationMulticast", LOG_LEVEL_DEBUG);
+    LogComponentEnable("NetworkControllerComponent", LOG_LEVEL_DEBUG);
+    LogComponentEnable("BufferedForwarder", LOG_LEVEL_ALL);
     //LogComponentEnable("ObjectCommHeader", LOG_LEVEL_ALL);
     //LogComponentEnable("GatewayLorawanMac", LOG_LEVEL_ALL);
     //LogComponentEnable("NetworkServer", LOG_LEVEL_ALL);
@@ -126,7 +131,7 @@ main(int argc, char* argv[])
     LogComponentEnableAll(LOG_PREFIX_NODE);
     LogComponentEnableAll(LOG_PREFIX_TIME);
 
-
+    Ptr<UniformRandomVariable> rng = CreateObject<UniformRandomVariable>();
 
     // Create a simple wireless channel
     ///////////////////////////////////
@@ -147,7 +152,14 @@ main(int argc, char* argv[])
     MobilityHelper mobilityGw;
     Ptr<ListPositionAllocator> positionAllocEd = CreateObject<ListPositionAllocator>();
     for(int i=0;i<nb_ED;i++) {
-        positionAllocEd->Add(Vector(dist, 0.0, 0.0));
+        NS_LOG_INFO("Using position: "<<position);
+        if (position == "Random")
+            positionAllocEd->Add(Vector(rng->GetValue(0, dist), rng->GetValue(0, dist), 0));
+        else if (position == "Fixed")
+            positionAllocEd->Add(Vector(dist, 0, 0));
+        else {
+            NS_LOG_ERROR("PROBLEM: position must be Fixed or Random, user provided"<<position);
+        }
     }
     mobilityEd.SetPositionAllocator(positionAllocEd);
     mobilityEd.SetMobilityModel("ns3::ConstantPositionMobilityModel");
@@ -187,8 +199,6 @@ main(int argc, char* argv[])
     macHelper.SetAddressGenerator(addrGen);
     macHelper.SetRegion(LorawanMacHelper::EU);
 
-    Ptr<UniformRandomVariable> rng = CreateObject<UniformRandomVariable>();
-
     NetDeviceContainer netdevs = helper.Install(phyHelper, macHelper, endDevices);
     for(NetDeviceContainer::Iterator dev = netdevs.Begin(); dev<netdevs.End(); dev++) {
         auto ldev = (*dev)->GetObject<LoraNetDevice>();
@@ -202,9 +212,10 @@ main(int argc, char* argv[])
         app->SetStartTime(Seconds(rng->GetInteger(10, 100)));
         //if (i%2 == 0) app->SetStartTime(Time::FromDouble(rng->GetInteger(10, 100), Time::Unit::S));
         //else          app->SetStartTime(Time::FromDouble(rng->GetInteger(3000, 3000), Time::Unit::S));
-        app->SetObjectSize(obj_size);
+        app->SetMCR(codingRatio);
         app->SetNode(endDevices.Get(i));
         app->SetMinDelayReTx(delayReTx);
+
         endDevices.Get(i)->AddApplication(app);
     }
 
