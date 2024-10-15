@@ -46,6 +46,7 @@
 #include "ns3/basic-energy-source-helper.h"
 #include "ns3/lora-radio-energy-model-helper.h"
 #include "ns3/file-helper.h"
+#include "ns3/okumura-hata-propagation-loss-model.h"
 
 #include "ns3/ObjectUtility.h"
 
@@ -135,10 +136,12 @@ main(int argc, char* argv[])
 
     // Create a simple wireless channel
     ///////////////////////////////////
-
-    Ptr<LogDistancePropagationLossModel> loss = CreateObject<LogDistancePropagationLossModel>();
-    loss->SetPathLossExponent(3.76);
-    loss->SetReference(1, 7.7);
+    Ptr<OkumuraHataPropagationLossModel> loss = CreateObject<OkumuraHataPropagationLossModel>();
+    loss->SetAttribute("Frequency", DoubleValue(865*1e6));
+    loss->SetAttribute("Environment", EnumValue(EnvironmentType::OpenAreasEnvironment));
+    //Ptr<LogDistancePropagationLossModel> loss = CreateObject<LogDistancePropagationLossModel>();
+    //loss->SetPathLossExponent(3.76);
+    //loss->SetReference(1, 7.7);
 
     Ptr<PropagationDelayModel> delay = CreateObject<ConstantSpeedPropagationDelayModel>();
 
@@ -148,15 +151,16 @@ main(int argc, char* argv[])
     //////////
 
     // End device mobility
+    // Heights of gateway and end devices taken from: Comparing and Adapting Propagation Models for LoRa Network
     MobilityHelper mobilityEd;
     MobilityHelper mobilityGw;
     Ptr<ListPositionAllocator> positionAllocEd = CreateObject<ListPositionAllocator>();
     for(int i=0;i<nb_ED;i++) {
         NS_LOG_INFO("Using position: "<<position);
         if (position == "Random")
-            positionAllocEd->Add(Vector(rng->GetValue(0, dist), rng->GetValue(0, dist), 0));
+            positionAllocEd->Add(Vector(rng->GetValue(0, dist), rng->GetValue(0, dist), 15.6));
         else if (position == "Fixed")
-            positionAllocEd->Add(Vector(dist, 0, 0));
+            positionAllocEd->Add(Vector(dist, 0, 15.6));
         else {
             NS_LOG_ERROR("PROBLEM: position must be Fixed or Random, user provided"<<position);
         }
@@ -166,7 +170,7 @@ main(int argc, char* argv[])
 
     // Gateway mobility
     Ptr<ListPositionAllocator> positionAllocGw = CreateObject<ListPositionAllocator>();
-    positionAllocGw->Add(Vector(0.0, 0.0, 0.0));
+    positionAllocGw->Add(Vector(0.0, 0.0, 1.1));
     mobilityGw.SetPositionAllocator(positionAllocGw);
     mobilityGw.SetMobilityModel("ns3::ConstantPositionMobilityModel");
 

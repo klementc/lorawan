@@ -241,9 +241,10 @@ class McClassCSessionReq :public ObjectCommHeader {
   void setSessionTimeout(uint8_t sessionTimeOut);
   void setFrequency(uint32_t freq);
   void setDR(uint8_t dr);
-  uint32_t GetFrequency();
-  uint8_t GetDR();
-  uint32_t GetSessionTime();
+  uint32_t GetFrequency() const;
+  uint8_t GetDR() const;
+  uint32_t GetSessionTime() const;
+  uint8_t GetSessionTimeout() const;
 
   private:
     uint8_t m_mcGroupIdHeader;

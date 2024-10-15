@@ -74,7 +74,7 @@ void BufferedForwarder::Forward() {
         m_loraNetDevice->Send(packetCopy);
     }  // if not possible reschedule for later
     else {
-        NS_LOG_DEBUG("Cannot send now, schedule after "<<waitTime<<"s.");
+        NS_LOG_DEBUG("Cannot send now, schedule after "<<waitTime.GetSeconds()<<"s.");
 
         Simulator::Schedule(waitTime, &BufferedForwarder::Forward, this);
     }

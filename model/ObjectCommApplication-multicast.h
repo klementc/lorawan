@@ -24,7 +24,6 @@ class ObjectCommApplicationMulticast : public Application
   public:
     ObjectCommApplicationMulticast();
 
-
     static TypeId GetTypeId();
     void StartApplication() override;
     void StopApplication() override;
@@ -51,6 +50,10 @@ class ObjectCommApplicationMulticast : public Application
     void SendClassCSetupRequest();
     void ProcessMulticastFragRecReq(Ptr<Packet const> packet);
 
+    // If the transmission failed, because of a timeout
+    void ReceptionTimeout();
+
+    void PrintLastUpdateTime();
     std::string PrintFragmentMap();
 
     void SetMCR(double cr);
@@ -67,6 +70,7 @@ class ObjectCommApplicationMulticast : public Application
     uint8_t m_dr;
     EventId m_noMoreFragmentsRx;
     std::vector<bool> m_fragmentMap;
+    ns3::Time m_lastUpdate;
     /**
      * Stores the number of fragments necessary for decoding the entire object with the redundancy mechanism
      * We can stop the open window after recieving m_nbFragsToFinish out of size(m_fragmentMap)
@@ -76,7 +80,7 @@ class ObjectCommApplicationMulticast : public Application
     uint64_t m_nbFrags;
     uint64_t m_fragSize;
     double m_CR;
-
+    uint32_t m_timeout;
 };
 
 } // namespace lorawan

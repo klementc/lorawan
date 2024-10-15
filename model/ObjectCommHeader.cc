@@ -470,22 +470,29 @@ McClassCSessionReq::setDR(uint8_t dr)
 }
 
 uint32_t
-McClassCSessionReq::GetFrequency()
+McClassCSessionReq::GetFrequency() const
 {
     return m_dlFrequency;
 }
 
 uint8_t
-McClassCSessionReq::GetDR()
+McClassCSessionReq::GetDR() const
 {
     return m_dr;
 }
 
 uint32_t
-McClassCSessionReq::GetSessionTime()
+McClassCSessionReq::GetSessionTime() const
 {
     return m_sessionTime;
 }
+
+uint8_t
+McClassCSessionReq::GetSessionTimeout() const
+{
+    return m_sessionTimeOut;
+}
+
 /******************************
  * McClassCSessionAns
  ****************************** */

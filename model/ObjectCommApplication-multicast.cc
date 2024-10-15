@@ -81,10 +81,11 @@ ObjectCommApplicationMulticast::GetTypeId()
 }
 
 ObjectCommApplicationMulticast::ObjectCommApplicationMulticast()
-    : m_frequency(-1), m_dr(0)
+    : m_frequency(-1), m_dr(0), m_lastUpdate(0)
 {
     NS_LOG_FUNCTION_NOARGS();
     m_rng = CreateObject<UniformRandomVariable>();
+    PrintLastUpdateTime();
 }
 
 void ObjectCommApplicationMulticast::SetMinDelayReTx(double delay) {
@@ -99,10 +100,6 @@ void ObjectCommApplicationMulticast::callbackCheckEndTx(std::string context, uin
 
     // if failure, retry later
     if(success == false) {
-        // if single fragment failed, resend it
-        // if (fHdr.GetFPort() == ObjectCommHeader::FPORT_SINGLE_FRAG) {
-        //     Simulator::Schedule(Seconds(m_rng->GetInteger(100, 500)), &ObjectCommApplicationMulticast::AskFragments, this);
-        // }
         // failed getting class C info? try again TODO: consider the timeout of the frag session
         if (fHdr.GetFPort() == ObjectCommHeader::FPORT_ED_MC_CLASSC_UP && multicastStarted != false) {
             NS_LOG_INFO("FAILED GETTING CLASS C FEEDBACK");
@@ -113,6 +110,14 @@ void ObjectCommApplicationMulticast::callbackCheckEndTx(std::string context, uin
             Simulator::Schedule(Seconds(m_rng->GetInteger(m_min_delay_retransmission, m_min_delay_retransmission+100)), &ObjectCommApplicationMulticast::SendMulticastInitRequest, this);
         }
     }
+}
+
+void ObjectCommApplicationMulticast::ReceptionTimeout()
+{
+    NS_LOG_INFO("TODO");
+    NS_LOG_INFO("Failed to retrieve object "<<m_objectID<<" Received "<<m_currentReceived/m_fragSize<<" fragments when we required "<<m_nbFragsToFinish<<". Cancel the reception now");
+    m_mac->closeFreeReceiveWindow();
+    multicastStarted = false;
 }
 
 void ObjectCommApplicationMulticast::ProcessMulticastFragRecReq(Ptr<Packet const> packet)
@@ -130,16 +135,15 @@ void ObjectCommApplicationMulticast::ProcessMulticastFragRecReq(Ptr<Packet const
     if (m_currentReceived < m_nbFragsToFinish*m_fragSize) {
         m_mac->openFreeReceiveWindow(m_frequency, m_dr);
         // we set the timeout again since we are waiting for more fragments
-        // m_noMoreFragmentsRx = Simulator::Schedule(Seconds(1000), &ObjectCommApplicationMulticast::AskFragments, this);
-        // TODO ADD A TIMEOUT
+        m_noMoreFragmentsRx = Simulator::Schedule(Seconds(m_timeout), &ObjectCommApplicationMulticast::ReceptionTimeout, this);
     } else {
+        m_lastUpdate = Simulator::Now();
         NS_LOG_DEBUG("Received " << m_currentReceived << "/" << m_objectSize << " bytes: stopping now, we have enough fragments to reconstruct the original data. Nb_frag_rec / Nb_frag_total: "<<m_nbFragsToFinish<<"/"<<m_nbFrags<<" with CR= "<<m_CR);
         m_mac->closeFreeReceiveWindow();
         multicastStarted = false; // reset for possible future tx or to avoid processing useless packets
     }
     NS_LOG_DEBUG(PrintFragmentMap());
     // cancel previous timeout and schedule new one to stop if not receiving any other fragment
-
 }
 
 void ObjectCommApplicationMulticast::ProcessClassCSessionReq(Ptr<Packet const> packet)
@@ -151,6 +155,7 @@ void ObjectCommApplicationMulticast::ProcessClassCSessionReq(Ptr<Packet const> p
     multicastStarted = true;
     m_frequency = cHdr.GetFrequency()/1e4;
     m_dr = cHdr.GetDR();
+    m_timeout = std::pow(2,cHdr.GetSessionTimeout());
     NS_LOG_INFO("Received class C info: "<<m_frequency<<" "<< (uint32_t) m_dr <<" "<<cHdr.GetSessionTime()<<" scheduled at time "<<Seconds(cHdr.GetSessionTime()));
 
     //////////// NOW SCHEDULE THE OPEN WINDOW AT THE RIGHT TIME
@@ -160,7 +165,12 @@ void ObjectCommApplicationMulticast::ProcessClassCSessionReq(Ptr<Packet const> p
         Simulator::Schedule(Seconds(cHdr.GetSessionTime())-Simulator::Now(),
             &ClassAOpenWindowEndDeviceLorawanMac::openFreeReceiveWindow, m_mac, m_frequency, m_dr);
     }
+}
 
+void ObjectCommApplicationMulticast::PrintLastUpdateTime()
+{
+    NS_LOG_INFO("Last update: "<<m_lastUpdate.GetSeconds()<<" s.");
+    Simulator::Schedule(Seconds(3600), &ObjectCommApplicationMulticast::PrintLastUpdateTime, this);
 }
 
 void ObjectCommApplicationMulticast::SendClassCSetupRequest()

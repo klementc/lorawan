@@ -129,11 +129,7 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
     NS_LOG_INFO("Received packet Mac Header: " << mHdr);
     NS_LOG_INFO("Received packet Frame Header: " << fHdr);
 
-    // if object broadcast request process it, otherwise keep classic ACK for confirmed packets
-    if (fHdr.GetFPort() == ObjectCommHeader::FPORT_SINGLE_FRAG) {
-        ProcessSingleFragmentReq(packet, status, networkStatus);
-    }
-    else if (fHdr.GetFPort() == ObjectCommHeader::FPORT_ED_MC_POLL){
+    if (fHdr.GetFPort() == ObjectCommHeader::FPORT_ED_MC_POLL){
         ProcessUOTARequest(packet, status, networkStatus);
     }
     else if (fHdr.GetFPort() == ObjectCommHeader::FPORT_ED_MC_CLASSC_UP) {
@@ -214,38 +210,9 @@ std::pair<LoraTag, LoraDeviceAddress> ConfirmedMessagesComponent::SelectParamsFo
             NS_LOG_ERROR("Tx paramaters policy does not exist");
             exit(1);
     }
+    selectedParams.first.SetFrequency(869.525);
     return selectedParams;
 
-}
-
-void ConfirmedMessagesComponent::ProcessSingleFragmentReq(Ptr<const Packet> packet,
-                                             Ptr<EndDeviceStatus> status,
-                                             Ptr<NetworkStatus> networkStatus)
-{
-
-    NS_LOG_FUNCTION(this->GetTypeId() << packet << networkStatus);
-
-    // LoraFrameHeader fHdr = getFrameHdr(packet);
-    // ObjectCommHeader oHdr = getObjHdr(packet);
-
-    // NS_LOG_INFO("Single Fragment Tx: # "<<oHdr.GetFragmentNumber());
-    // // create ACK reply with payload
-    // status->m_reply.frameHeader.SetFPort(ObjectCommHeader::FPORT_SINGLE_FRAG);
-    // status->m_reply.frameHeader.SetAsDownlink();
-    // status->m_reply.frameHeader.SetAck(true);
-    // status->m_reply.frameHeader.SetAddress(fHdr.GetAddress());
-    // status->m_reply.macHeader.SetMType(LorawanMacHeader::UNCONFIRMED_DATA_DOWN);
-    // status->m_reply.needsReply = true;
-
-    // Ptr<Packet> myPacket = packet->Copy();
-    // LoraTag tagtmp;
-    // myPacket->RemovePacketTag(tagtmp);
-    // int drVal = -1;
-    // for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==tagtmp.GetSpreadingFactor()) {drVal=i;break;}}
-    // auto retFragment = Create<Packet>(maxPLsize[drVal]-oHdr.GetSerializedSize());
-    // oHdr.SetType(3);
-    // retFragment->AddHeader(oHdr);
-    // status->m_reply.payload = retFragment;
 }
 
 void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
@@ -347,7 +314,7 @@ ConfirmedMessagesComponent::CreateClassCMulticastReq(Ptr<const Packet> packet,
         status->m_reply.needsReply = false;
     }
     sHdr.setSessionTime(sessionTime);
-    sHdr.setSessionTimeout(0); // TODO: take the time out value in the client
+    sHdr.setSessionTimeout(10); // Client will schedule a timeout after 2**10 seconds to close the window if receiving nothing
 
     // prepare the ACK
     LoraFrameHeader fHdr = getFrameHdr(packet);
