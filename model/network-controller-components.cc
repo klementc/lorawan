@@ -31,18 +31,6 @@ NS_LOG_COMPONENT_DEFINE("NetworkControllerComponent");
 
 NS_OBJECT_ENSURE_REGISTERED(NetworkControllerComponent);
 
-static LorawanMacHeader getMacHdr(Ptr<Packet const> packet) {
-    ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
-    ns3::lorawan::LorawanMacHeader mHdr;
-    packetCopy->RemoveHeader(mHdr);
-
-    return mHdr;
-    ns3::lorawan::LoraFrameHeader fHdr;
-    packetCopy->RemoveHeader(fHdr);
-    ObjectCommHeader oHdr;
-    packetCopy->RemoveHeader(oHdr);
-}
-
 static LoraFrameHeader getFrameHdr(Ptr<Packet const> packet) {
     ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
     ns3::lorawan::LorawanMacHeader mHdr;
@@ -50,28 +38,6 @@ static LoraFrameHeader getFrameHdr(Ptr<Packet const> packet) {
     ns3::lorawan::LoraFrameHeader fHdr;
     packetCopy->RemoveHeader(fHdr);
     return fHdr;
-}
-
-static ObjectCommHeader getObjHdr(Ptr<Packet const> packet) {
-    ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
-    ns3::lorawan::LorawanMacHeader mHdr;
-    packetCopy->RemoveHeader(mHdr);
-    ns3::lorawan::LoraFrameHeader fHdr;
-    packetCopy->RemoveHeader(fHdr);
-    ObjectCommHeader oHdr;
-    packetCopy->RemoveHeader(oHdr);
-    return oHdr;
-}
-
-static Ptr<Packet> getObjPayload(Ptr<Packet const> packet) {
-        ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
-    ns3::lorawan::LorawanMacHeader mHdr;
-    packetCopy->RemoveHeader(mHdr);
-    ns3::lorawan::LoraFrameHeader fHdr;
-    packetCopy->RemoveHeader(fHdr);
-    ObjectCommHeader oHdr;
-    packetCopy->RemoveHeader(oHdr);
-    return packetCopy;
 }
 
 TypeId
@@ -378,7 +344,7 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
     double nbFragmentsNoRedundancy = std::ceil(OBJECT_SIZE_BYTES/payloadSize);
     uint32_t nbFragmentsWithRedundancy = std::ceil(nbFragmentsNoRedundancy/CR);
     NS_LOG_INFO("nb fragments no red: "<<nbFragmentsNoRedundancy<<" with CR="<<CR<<", nb fragments ="<<nbFragmentsWithRedundancy);
-    for(int nbSent=0;nbSent<nbFragmentsWithRedundancy; nbSent++) {
+    for(uint32_t nbSent=0;nbSent<nbFragmentsWithRedundancy; nbSent++) {
         NS_LOG_INFO("Schedule SendThroughGW after " << emitTime << " seconds, total="<<nbSent<<"/"<<OBJECT_SIZE_BYTES/payloadSize <<" DR: "<<(uint64_t)dr<<" Freq: "<<freq<<" payload size: "<<payloadSize);
 
         uint32_t fragmentSize = payloadSize; // null bytes padding if too big

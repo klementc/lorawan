@@ -59,6 +59,19 @@ ObjectCommHeader::GetObjID()
     return m_objID;
 }
 
+uint32_t
+ObjectCommHeader::GetObjectAge() const
+{
+    return m_objectAge;
+}
+
+void
+ObjectCommHeader::setObjectAge(uint32_t age)
+{
+    NS_LOG_UNCOND("Set age to "<<age);
+    m_objectAge = age;
+}
+
 void
 ObjectCommHeader::Print(std::ostream& os) const
 {
@@ -69,14 +82,14 @@ ObjectCommHeader::Print(std::ostream& os) const
 uint32_t
 ObjectCommHeader::GetSerializedSize() const
 {
-    return 1;
+    return 1+4;
 }
 
 void
 ObjectCommHeader::Serialize(Buffer::Iterator start) const
 {
     Buffer::Iterator i = start;
-
+    i.WriteU32(m_objectAge);
     i.WriteU8(m_objID);
 }
 
@@ -84,6 +97,7 @@ uint32_t
 ObjectCommHeader::Deserialize(Buffer::Iterator start)
 {
     Buffer::Iterator i = start;
+    m_objectAge = i.ReadU32();
     m_objID = i.ReadU8();
 
     return GetSerializedSize();

@@ -88,7 +88,8 @@ class ObjectCommHeader : public Header {
     uint32_t Deserialize(Buffer::Iterator start) override;
 
     uint8_t getCID() const;
-
+    void setObjectAge(uint32_t age);
+    uint32_t GetObjectAge() const;
     /**
      * Used to fill the packet with the object's data, size should be set depending on
      * the size of the data of the object to send and the max size of the lora packet
@@ -98,6 +99,8 @@ class ObjectCommHeader : public Header {
   protected:
     uint8_t m_cID;
     uint8_t m_objID{42};
+   // can be of any unit, this is application dependant
+    uint32_t m_objectAge;
 };
 
 class FragSessionSetupReq : public ObjectCommHeader {

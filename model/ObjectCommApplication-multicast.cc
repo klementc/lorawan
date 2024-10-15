@@ -18,18 +18,6 @@ NS_LOG_COMPONENT_DEFINE("ObjectCommApplicationMulticast");
 
 NS_OBJECT_ENSURE_REGISTERED(ObjectCommApplicationMulticast);
 
-static LorawanMacHeader getMacHdr(Ptr<Packet const> packet) {
-    ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
-    ns3::lorawan::LorawanMacHeader mHdr;
-    packetCopy->RemoveHeader(mHdr);
-
-    return mHdr;
-    ns3::lorawan::LoraFrameHeader fHdr;
-    packetCopy->RemoveHeader(fHdr);
-    ObjectCommHeader oHdr;
-    packetCopy->RemoveHeader(oHdr);
-}
-
 static LoraFrameHeader getFrameHdr(Ptr<Packet const> packet) {
     ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
     ns3::lorawan::LorawanMacHeader mHdr;
@@ -37,17 +25,6 @@ static LoraFrameHeader getFrameHdr(Ptr<Packet const> packet) {
     ns3::lorawan::LoraFrameHeader fHdr;
     packetCopy->RemoveHeader(fHdr);
     return fHdr;
-}
-
-static ObjectCommHeader getObjHdr(Ptr<Packet const> packet) {
-    ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
-    ns3::lorawan::LorawanMacHeader mHdr;
-    packetCopy->RemoveHeader(mHdr);
-    ns3::lorawan::LoraFrameHeader fHdr;
-    packetCopy->RemoveHeader(fHdr);
-    ObjectCommHeader oHdr;
-    packetCopy->RemoveHeader(oHdr);
-    return oHdr;
 }
 
 static Ptr<Packet> getLoRaPayload(Ptr<Packet const> packet) {
