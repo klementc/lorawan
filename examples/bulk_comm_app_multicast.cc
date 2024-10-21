@@ -22,7 +22,6 @@
  * simulated: end devices, some gateways and a network server.
  * Two end devices are already configured to send unconfirmed and confirmed messages respectively.
  */
-
 #include "ns3/command-line.h"
 #include "ns3/core-module.h"
 #include "ns3/buffered-forwarder-helper.h"
@@ -55,7 +54,7 @@ using namespace lorawan;
 
 NS_LOG_COMPONENT_DEFINE("BulkCommAppMulticast");
 
-double simTime = 100000;
+double simTime = 1000000;
 void logEnergy(DeviceEnergyModelContainer devices) {
     static double prevVal = -1;
     double totEnergy = 0;
@@ -82,6 +81,7 @@ main(int argc, char* argv[])
     double delayReTx = 50;
     double codingRatio = 0.9; // ~10% of error supported
     std::string position = "Fixed"; // "Fixed" for stations at the exact distance dist to the GW, or "Random" for machines at a random distance between 0 and dist
+    std::string policy = "ALL";
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("verbose", "Whether to print output or not", verbose);
@@ -92,6 +92,8 @@ main(int argc, char* argv[])
     cmd.AddValue("delayReTx", "delay between consecutive request after a communication fail", delayReTx);
     cmd.AddValue("position", "Fixed=exactly dist from the GW, Random=random position between 0 and dist to the GW", position);
     cmd.AddValue("CR", "Coding ratio to be used to code the data with redundancy", codingRatio);
+    cmd.AddValue("duration","duration of the simulation", simTime);
+    cmd.AddValue("policy", "ALL|FASTEST|THRESHOLD",policy);
     cmd.Parse(argc, argv);
 
 
@@ -104,33 +106,28 @@ main(int argc, char* argv[])
     // Logging
     //////////
     LogComponentEnable("BulkCommAppMulticast", LOG_LEVEL_ALL);
+    LogComponentEnable("ObjectCommApplicationMulticast", LOG_LEVEL_INFO);
+    LogComponentEnable("NetworkControllerComponent", LOG_LEVEL_INFO);
     LogComponentEnable("ClassAOpenWindowEndDeviceLorawanMac", LOG_LEVEL_INFO);
+
     LogComponentEnable("ClassAEndDeviceLorawanMac", LOG_LEVEL_INFO);
-    LogComponentEnable("ObjectCommApplicationMulticast", LOG_LEVEL_DEBUG);
-    LogComponentEnable("NetworkControllerComponent", LOG_LEVEL_DEBUG);
-    LogComponentEnable("BufferedForwarder", LOG_LEVEL_ALL);
-    //LogComponentEnable("ObjectCommHeader", LOG_LEVEL_ALL);
-    //LogComponentEnable("GatewayLorawanMac", LOG_LEVEL_ALL);
-    //LogComponentEnable("NetworkServer", LOG_LEVEL_ALL);
-    // LogComponentEnable("LoraFrameHeader", LOG_LEVEL_ALL);
-    // LogComponentEnable("LorawanMacHeader", LOG_LEVEL_ALL);
-    // LogComponentEnable("MacCommand", LOG_LEVEL_ALL);
-    //LogComponentEnable("GatewayLoraPhy", LOG_LEVEL_ALL);
-    //LogComponentEnable("LoraPhy", LOG_LEVEL_ALL);
-    // LogComponentEnable("LoraChannel", LOG_LEVEL_ALL);
-    //LogComponentEnable("EndDeviceLoraPhy", LOG_LEVEL_ALL);
-    // LogComponentEnable("LogicalLoraChannelHelper", LOG_LEVEL_ALL);
-    //LogComponentEnable("EndDeviceLorawanMac", LOG_LEVEL_ALL);
-    // LogComponentEnable ("OneShotSender", LOG_LEVEL_ALL);
-    // LogComponentEnable("PointToPointNetDevice", LOG_LEVEL_ALL);
-    // LogComponentEnable ("Forwarder", LOG_LEVEL_ALL);
-    // LogComponentEnable ("OneShotSender", LOG_LEVEL_ALL);
-    // LogComponentEnable ("DeviceStatus", LOG_LEVEL_ALL);
-    //LogComponentEnable ("GatewayStatus", LOG_LEVEL_ALL);
-    //LogComponentEnable ("LoraRadioEnergyModel", LOG_LEVEL_ALL);
+    LogComponentEnable("BufferedForwarder", LOG_LEVEL_INFO);
+    LogComponentEnable("LorawanMacHelper", LOG_LEVEL_INFO);
+
     LogComponentEnableAll(LOG_PREFIX_FUNC);
     LogComponentEnableAll(LOG_PREFIX_NODE);
     LogComponentEnableAll(LOG_PREFIX_TIME);
+
+    if (policy=="ALL")
+        SELECTED_POLICY = txParamsPolicy::ALL_MACHINES;
+    else if (policy=="FASTEST")
+        SELECTED_POLICY = txParamsPolicy::FASTEST_MACHINES;
+    else if (policy =="THRESHOLD")
+        SELECTED_POLICY = txParamsPolicy::THRESHOLD;
+    else
+        NS_ABORT_MSG("SPECIFY A CORRECT POLICY");
+
+    NS_LOG_INFO("Using policy "<<SELECTED_POLICY);
 
     Ptr<UniformRandomVariable> rng = CreateObject<UniformRandomVariable>();
 
@@ -149,28 +146,46 @@ main(int argc, char* argv[])
 
     // Helpers
     //////////
+    NodeContainer endDevices;
+    endDevices.Create(nb_ED);
+    NodeContainer gateways;
+    gateways.Create(1);
 
     // End device mobility
     // Heights of gateway and end devices taken from: Comparing and Adapting Propagation Models for LoRa Network
     MobilityHelper mobilityEd;
     MobilityHelper mobilityGw;
     Ptr<ListPositionAllocator> positionAllocEd = CreateObject<ListPositionAllocator>();
+
     for(int i=0;i<nb_ED;i++) {
+        double r = dist;
+        double theta = rng->GetValue(0,1) * 2 * 3.14159265358979323846;
         NS_LOG_INFO("Using position: "<<position);
-        if (position == "Random")
-            positionAllocEd->Add(Vector(rng->GetValue(0, dist), rng->GetValue(0, dist), 15.6));
-        else if (position == "Fixed")
-            positionAllocEd->Add(Vector(dist, 0, 15.6));
-        else {
+        if (position == "Random"){
+            r = dist * sqrt(rng->GetValue(0,1));
+        }
+        else if (position == "Fixed"){
+            r = dist;
+        } else {
             NS_LOG_ERROR("PROBLEM: position must be Fixed or Random, user provided"<<position);
         }
+        double x = r * cos(theta);
+        double y = r * sin(theta);
+        positionAllocEd->Add(Vector(x, y, 1.1));
+        NS_LOG_INFO("Add STA in ( "<< x <<" , "<<y<<" , 0 ) STA"<<endDevices.Get(i)->GetId());
     }
     mobilityEd.SetPositionAllocator(positionAllocEd);
     mobilityEd.SetMobilityModel("ns3::ConstantPositionMobilityModel");
 
     // Gateway mobility
     Ptr<ListPositionAllocator> positionAllocGw = CreateObject<ListPositionAllocator>();
-    positionAllocGw->Add(Vector(0.0, 0.0, 1.1));
+    {
+        double x, y;
+        x = 0;
+        y = 0;
+        positionAllocGw->Add(Vector(x, y, 15.6));
+        NS_LOG_INFO("Add GW in ( "<<x<<" , "<<y<<" , 0 ) GW"<<gateways.Get(0)->GetId());
+    }
     mobilityGw.SetPositionAllocator(positionAllocGw);
     mobilityGw.SetMobilityModel("ns3::ConstantPositionMobilityModel");
 
@@ -186,9 +201,6 @@ main(int argc, char* argv[])
 
     // Create end devices
     /////////////
-
-    NodeContainer endDevices;
-    endDevices.Create(nb_ED);
     mobilityEd.Install(endDevices);
 
     // Create a LoraDeviceAddressGenerator
@@ -213,9 +225,7 @@ main(int argc, char* argv[])
     /* Communication in the LoRa zone */
     for (int i=0; i<nb_ED; i++) {
         Ptr<ObjectCommApplicationMulticast> app = factory.Create<ObjectCommApplicationMulticast>();
-        app->SetStartTime(Seconds(rng->GetInteger(10, 100)));
-        //if (i%2 == 0) app->SetStartTime(Time::FromDouble(rng->GetInteger(10, 100), Time::Unit::S));
-        //else          app->SetStartTime(Time::FromDouble(rng->GetInteger(3000, 3000), Time::Unit::S));
+        app->SetStartTime(Seconds(rng->GetInteger(10, 1000)));
         app->SetMCR(codingRatio);
         app->SetNode(endDevices.Get(i));
         app->SetMinDelayReTx(delayReTx);
@@ -226,9 +236,6 @@ main(int argc, char* argv[])
     ////////////////
     // Create gateways //
     ////////////////
-
-    NodeContainer gateways;
-    gateways.Create(1);
     mobilityGw.Install(gateways);
 
     // Create the LoraNetDevices of the gateways

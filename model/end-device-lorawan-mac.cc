@@ -502,6 +502,12 @@ EndDeviceLorawanMac::SetFPort(uint8_t port)
     m_fPort = port;
 }
 
+uint8_t
+EndDeviceLorawanMac::GetFPort()
+{
+    return m_fPort;
+}
+
 
 void
 EndDeviceLorawanMac::ApplyNecessaryOptions(LorawanMacHeader& macHeader)

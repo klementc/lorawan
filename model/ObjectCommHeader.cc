@@ -68,7 +68,7 @@ ObjectCommHeader::GetObjectAge() const
 void
 ObjectCommHeader::setObjectAge(uint32_t age)
 {
-    NS_LOG_UNCOND("Set age to "<<age);
+    NS_LOG_DEBUG("Set age to "<<age);
     m_objectAge = age;
 }
 

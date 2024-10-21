@@ -11,4 +11,8 @@ int OBJECT_SIZE_BYTES = 0; // size of the object to send in bytes
  */
 double CR = 1;
 
+enum txParamsPolicy {ALL_MACHINES, FASTEST_MACHINES, THRESHOLD};
+
+txParamsPolicy SELECTED_POLICY = txParamsPolicy::ALL_MACHINES;
+
 #endif

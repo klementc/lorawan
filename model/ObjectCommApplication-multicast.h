@@ -55,6 +55,7 @@ class ObjectCommApplicationMulticast : public Application
 
     void PrintLastUpdateTime();
     std::string PrintFragmentMap();
+    void PeriodicUpdateScheduler();
 
     void SetMCR(double cr);
 
@@ -67,6 +68,7 @@ class ObjectCommApplicationMulticast : public Application
     double m_min_delay_retransmission {50};
     bool multicastStarted{false};
     double m_frequency;
+    Time m_nextMCRx;
     uint8_t m_dr;
     EventId m_noMoreFragmentsRx;
     std::vector<bool> m_fragmentMap;

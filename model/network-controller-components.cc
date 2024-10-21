@@ -40,6 +40,15 @@ static LoraFrameHeader getFrameHdr(Ptr<Packet const> packet) {
     return fHdr;
 }
 
+static Ptr<Packet> getFrameContent(Ptr<Packet const> packet) {
+    ns3::Ptr<ns3::Packet> packetCopy = packet->Copy();
+    ns3::lorawan::LorawanMacHeader mHdr;
+    packetCopy->RemoveHeader(mHdr);
+    ns3::lorawan::LoraFrameHeader fHdr;
+    packetCopy->RemoveHeader(fHdr);
+    return packetCopy;
+}
+
 TypeId
 NetworkControllerComponent::GetTypeId()
 {
@@ -82,7 +91,7 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
                                              Ptr<EndDeviceStatus> status,
                                              Ptr<NetworkStatus> networkStatus)
 {
-    NS_LOG_FUNCTION(this->GetTypeId() << packet << networkStatus);
+    NS_LOG_FUNCTION_NOARGS(/*this->GetTypeId() << packet << networkStatus*/);
 
     // Check whether the received packet requires an acknowledgment.
     LorawanMacHeader mHdr;
@@ -92,8 +101,8 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
     myPacket->RemoveHeader(mHdr);
     myPacket->RemoveHeader(fHdr);
 
-    NS_LOG_INFO("Received packet Mac Header: " << mHdr);
-    NS_LOG_INFO("Received packet Frame Header: " << fHdr);
+    NS_LOG_DEBUG("Received packet Mac Header: " << mHdr);
+    NS_LOG_DEBUG("Received packet Frame Header: " << fHdr);
 
     if (fHdr.GetFPort() == ObjectCommHeader::FPORT_ED_MC_POLL){
         ProcessUOTARequest(packet, status, networkStatus);
@@ -127,28 +136,26 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
 bool alreadyScheduled = false;
 double freq = 0;
 uint8_t dr = 10;
-double emitTime = 0;
 std::pair<ConfirmedMessagesComponent::ObjectPhase, double> currentState = std::make_pair(ConfirmedMessagesComponent::ObjectPhase::initialize, 0);
-std::vector<std::pair<LoraTag,LoraDeviceAddress>> registeredNodes;
+std::map<LoraDeviceAddress,std::tuple<LoraTag,ns3::Time>> registeredNodes;
 LoraDeviceAddress devAddr;
-enum txParamsPolicy {ALL_MACHINES, FASTEST_MACHINES, N_PERCENT};
-txParamsPolicy selectedPolicy = txParamsPolicy::ALL_MACHINES;
 
 // uses registered nodes and the selected policy to define the parameters for transmission of the model
 std::pair<LoraTag, LoraDeviceAddress> ConfirmedMessagesComponent::SelectParamsForBroadcast()
 {
-    std::pair<LoraTag, LoraDeviceAddress> selectedParams = registeredNodes[0];
+    auto selectedParams = std::make_pair(LoraDeviceAddress(), registeredNodes.begin()->second);
     double lowestDR;
     double drtmp;
-    switch (selectedPolicy) {
+    static double thresholdUpdate = 3; // 3 days
+    switch (SELECTED_POLICY) {
         case txParamsPolicy::ALL_MACHINES:
             // Policy 1: All machines receive the message -> select the highest SF
             lowestDR = 100; // compute lowest DR possible
             for (auto params : registeredNodes) {
-                NS_LOG_INFO("Processing params for "<<params.second<<" SF: "<<(uint64_t)params.first.GetSpreadingFactor()<<" Freq: "<<params.first.GetFrequency());
+                NS_LOG_DEBUG("Processing params for "<<params.first<<" SF: "<<(uint64_t)std::get<0>(params.second).GetSpreadingFactor()<<" Freq: "<<std::get<0>(params.second).GetFrequency()<<" age(days): "<<std::get<1>(params.second).GetSeconds()/(3600*24));
                 // compute if this node is better than the previously selected
                 drtmp = 0;
-                for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==params.first.GetSpreadingFactor()) {drtmp=i;break;}}
+                for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==std::get<0>(params.second).GetSpreadingFactor()) {drtmp=i;break;}}
                 if (drtmp < lowestDR) {
                     lowestDR = drtmp;
                     selectedParams = params;
@@ -159,25 +166,51 @@ std::pair<LoraTag, LoraDeviceAddress> ConfirmedMessagesComponent::SelectParamsFo
             // Policy 2: Send the update only to the closest set of machines -> select the lowest SF
             lowestDR = 0; // compute lowest DR possible
             for (auto params : registeredNodes) {
-                NS_LOG_INFO("Processing params for "<<params.second<<" SF: "<<(uint64_t)params.first.GetSpreadingFactor()<<" Freq: "<<params.first.GetFrequency());
+                NS_LOG_DEBUG("Processing params for "<<params.first<<" SF: "<<(uint64_t)std::get<0>(params.second).GetSpreadingFactor()<<" Freq: "<<std::get<0>(params.second).GetFrequency()<<" age(days): "<<std::get<1>(params.second).GetSeconds()/(3600*24));
                 // compute if this node is better than the previously selected
                 drtmp = 0;
-                for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==params.first.GetSpreadingFactor()) {drtmp=i;break;}}
+                for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==std::get<0>(params.second).GetSpreadingFactor()) {drtmp=i;break;}}
                 if (drtmp > lowestDR) {
                     lowestDR = drtmp;
-                    selectedParams = params;
+                    selectedParams = std::make_pair(params.first, params.second);
                 }
             }
             break;
-        case txParamsPolicy::N_PERCENT:
-            NS_LOG_ERROR("TODO, NOT IMPLEMENTED YET");
+        case txParamsPolicy::THRESHOLD:
+            // Select fastest policy, except if time exceeds a threshold, in which case select the slowest that exceeds the threshold
+            lowestDR = 0; // compute lowest DR possible
+            for (auto params : registeredNodes) {
+                NS_LOG_DEBUG("Processing params for "<<params.first<<" SF: "<<(uint64_t)std::get<0>(params.second).GetSpreadingFactor()<<" Freq: "<<std::get<0>(params.second).GetFrequency()<<" age(days): "<<std::get<1>(params.second).GetSeconds()/(3600*24));
+                // compute if this node is better than the previously selected
+                drtmp = 0;
+                for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==std::get<0>(params.second).GetSpreadingFactor()) {drtmp=i;break;}}
+                if (drtmp > lowestDR) {
+                    lowestDR = drtmp;
+                    selectedParams = std::make_pair(params.first, params.second);
+                }
+            }
+            // check for nodes that exceed
+            for (auto params : registeredNodes) {
+                NS_LOG_INFO("THRESHCOMP: "<<std::get<1>(params.second).GetSeconds()<<" : "<<std::get<1>(params.second).GetSeconds()/(3600*24));
+                if (std::get<1>(params.second).GetSeconds()/(3600*24)>thresholdUpdate)
+                {
+                    NS_LOG_INFO("ABOVE THRESHOLD: "<<std::get<1>(params.second).GetSeconds()/(3600*24)<<" with SF="<<std::get<0>(params.second).GetSpreadingFactor());
+                    drtmp = 0;
+                    for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==std::get<0>(params.second).GetSpreadingFactor()) {drtmp=i;break;}}
+                    if (drtmp < lowestDR) {
+                        lowestDR = drtmp;
+                        selectedParams = std::make_pair(params.first, params.second);
+                    }
+                }
+            }
             break;
         default:
             NS_LOG_ERROR("Tx paramaters policy does not exist");
             exit(1);
     }
-    selectedParams.first.SetFrequency(869.525);
-    return selectedParams;
+    std::get<0>(selectedParams.second).SetFrequency(869.525);
+    NS_LOG_INFO("Make multicast using DR: "<<lowestDR);
+    return std::make_pair(std::get<0>(selectedParams.second),selectedParams.first);
 
 }
 
@@ -190,16 +223,22 @@ void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
     static bool isDestDefined = false;
     LoraFrameHeader fHdr = getFrameHdr(packet);
 
-    if(currentState.first == ObjectPhase::pool && currentState.second+1000<=(Simulator::Now()).GetSeconds()) {
+    double dur_pooling = 3600*6;
+    if(currentState.first == ObjectPhase::pool && currentState.second+dur_pooling<=(Simulator::Now()).GetSeconds()) {
         // must switch to advertising phase
-        currentState = std::make_pair(ObjectPhase::advertize, Simulator::Now().GetSeconds());
+        SwitchToState(ObjectPhase::advertize);
         isDestDefined = false;
-    } else if (currentState.first == ObjectPhase::initialize){
-        currentState = std::make_pair(ObjectPhase::pool, Simulator::Now().GetSeconds());
+    } else if (currentState.first == ObjectPhase::initialize && fHdr.GetFPort()==ObjectCommHeader::FPORT_ED_MC_POLL){ // only if it's a request for an object to avoid collecting useless nodes info
+        std::stringstream s;
+        packet->Print(s);
+        SwitchToState(ObjectPhase::pool);
     }
-    if(currentState.first == ObjectPhase::pool) {
+
+    if(currentState.first == ObjectPhase::pool && fHdr.GetFPort()==ObjectCommHeader::FPORT_ED_MC_POLL) {
         // Pooling phase, do not send any ACK during this phase
-        NS_LOG_INFO("POOLING");
+        ObjectCommHeader odr;
+        getFrameContent(packet)->RemoveHeader(odr);
+
         status->m_reply.frameHeader.SetAck(false);
         status->m_reply.needsReply = false;
 
@@ -207,7 +246,7 @@ void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
         Ptr<Packet> myPacket = packet->Copy();
         LoraTag tagtmp;
         myPacket->RemovePacketTag(tagtmp);
-        registeredNodes.push_back(std::make_pair(tagtmp, fHdr.GetAddress()));
+        registeredNodes[fHdr.GetAddress()] = (std::make_tuple(tagtmp, Seconds(odr.GetObjectAge())));
 
     } else if (currentState.first == ObjectPhase::advertize) {
         // First step: compute the Tx parameters to use
@@ -217,7 +256,7 @@ void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
         }
 
         // Acknowledge clients with the broadcast information
-        NS_LOG_INFO("ADVERTISING");
+        NS_LOG_DEBUG("ADVERTISING");
         status->m_reply.frameHeader.SetFPort(ObjectCommHeader::FPORT_FRAG_SESS_SETUP);
         status->m_reply.frameHeader.SetAsDownlink();
         status->m_reply.frameHeader.SetAck(true);
@@ -231,10 +270,9 @@ void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
             freq = dest.first.GetFrequency();
             dr = 0;
             for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==dest.first.GetSpreadingFactor()) {dr=i;break;}}
-            emitTime = (Simulator::Now()+Seconds(3600)).GetSeconds();
+            m_emittime = (Simulator::Now()+Seconds(3600*10)).GetSeconds();
         }
 
-        ////////////// PART 1 SEND THE FRAG SESSION REQUEST AND SCHEDULE THE EMISSION
         DownlinkFragment fragUseless; // just to get the size of the header
         auto plSize = 0.;
         for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==dest.first.GetSpreadingFactor()) {plSize = maxPLsize[i]-fragUseless.GetSerializedSize();break;}}
@@ -251,10 +289,9 @@ void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
         status->m_reply.payload = retPL;
         std::stringstream str;
         fragHdr.Print(str);
-        NS_LOG_DEBUG("Send DownlinkFragment"<<str.str());
+        //NS_LOG_DEBUG("Send DownlinkFragment"<<str.str());
 
-        NS_LOG_INFO("Request for object ID: "<< (uint64_t)fragHdr.GetObjID()<< " already sent: "<<alreadyScheduled);
-
+        NS_LOG_DEBUG("Request for object ID: "<< (uint64_t)fragHdr.GetObjID()<< " already sent: "<<alreadyScheduled);
         // Schedule the future emission
         if(! alreadyScheduled) {
             EmitObject(networkStatus->GetReplyForDevice(dest.second, 3), networkStatus);
@@ -273,7 +310,7 @@ ConfirmedMessagesComponent::CreateClassCMulticastReq(Ptr<const Packet> packet,
     McClassCSessionReq sHdr;
     sHdr.setDR(dr);
     sHdr.setFrequency(freq*1e4); // freq is in MHz, multiply by 1e6, divide by 100, see specification
-    uint32_t sessionTime = static_cast<uint32_t>(emitTime-1);
+    uint32_t sessionTime = static_cast<uint32_t>(m_emittime-1);
     // If someone asks for opening the session too late. TODO: setup for starting reception and using redundant fragments for finishing
     if (sessionTime < 0) {
         status->m_reply.frameHeader.SetAck(false);
@@ -296,18 +333,22 @@ ConfirmedMessagesComponent::CreateClassCMulticastReq(Ptr<const Packet> packet,
     retPL->AddHeader(sHdr);
     status->m_reply.payload = retPL;
 
-    NS_LOG_INFO("Send Class C Session Request to "<<fHdr.GetAddress());
+    NS_LOG_DEBUG("Send Class C Session Request to "<<fHdr.GetAddress());
 }
 
 void ConfirmedMessagesComponent::SwitchToState(ObjectPhase phase){
     currentState = std::make_pair(phase, Simulator::Now().GetSeconds());
+    NS_LOG_INFO("Network server switch state to "<<phase);
     // if we reset the alg, we need to reset alreadySent
-    if (phase == ObjectPhase::initialize) alreadyScheduled = false;
+    if (phase == ObjectPhase::initialize) {
+        alreadyScheduled = false;
+        registeredNodes.clear(); // empty the pool
+    }
 }
 
 void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<NetworkStatus> networkStatus)
 {
-    NS_LOG_INFO("CALL TO EMIT");
+    NS_LOG_INFO("Start emitting now");
     // switch to sending since we start sending now
 
     LorawanMacHeader mHdr;
@@ -322,9 +363,9 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
     auto gwToUse = networkStatus->GetBestGatewayForDevice(fHdr.GetAddress(), 1);
     fHdr.SetAddress(LoraDeviceAddress(0,0));
 
-    NS_LOG_INFO("USING GW "<<gwToUse << " for dev "<< fHdr.GetAddress());
+    NS_LOG_DEBUG("USING GW "<<gwToUse << " for dev "<< fHdr.GetAddress());
     if (gwToUse == Address()) {
-        NS_LOG_INFO("Schedule emit after 1 more second");
+        NS_LOG_DEBUG("Schedule emit after 1 more second");
         Simulator::Schedule(Seconds(1),
             &ConfirmedMessagesComponent::EmitObject,
             this,
@@ -338,14 +379,14 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
 
     int payloadSize = maxPLsize[dr]-oHdr.GetSerializedSize();
 
-    Simulator::Schedule(std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0)),
+    Simulator::Schedule(std::max(Seconds(m_emittime)-Simulator::Now(),Seconds(0)),
         &ConfirmedMessagesComponent::SwitchToState, this, ObjectPhase::send);
 
     double nbFragmentsNoRedundancy = std::ceil(OBJECT_SIZE_BYTES/payloadSize);
     uint32_t nbFragmentsWithRedundancy = std::ceil(nbFragmentsNoRedundancy/CR);
     NS_LOG_INFO("nb fragments no red: "<<nbFragmentsNoRedundancy<<" with CR="<<CR<<", nb fragments ="<<nbFragmentsWithRedundancy);
     for(uint32_t nbSent=0;nbSent<nbFragmentsWithRedundancy; nbSent++) {
-        NS_LOG_INFO("Schedule SendThroughGW after " << emitTime << " seconds, total="<<nbSent<<"/"<<OBJECT_SIZE_BYTES/payloadSize <<" DR: "<<(uint64_t)dr<<" Freq: "<<freq<<" payload size: "<<payloadSize);
+        NS_LOG_INFO("Schedule SendThroughGW in " << m_emittime << " s, tot="<<nbSent<<"/"<<OBJECT_SIZE_BYTES/payloadSize <<" DR: "<<(uint64_t)dr<<" Freq: "<<freq<<" pl size: "<<payloadSize);
 
         uint32_t fragmentSize = payloadSize; // null bytes padding if too big
         Ptr<Packet> pktPayload = Create<Packet>();
@@ -362,13 +403,17 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
         tag.SetFrequency(freq);
         pktPayload->AddPacketTag(tag);
 
-        Simulator::Schedule(std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0))+Seconds(nbSent),
+        Simulator::Schedule(std::max(Seconds(m_emittime)-Simulator::Now(),Seconds(0))+Seconds(nbSent),
             &NetworkStatus::SendThroughGateway, networkStatus, pktPayload, gwToUse);
     }
 
     // GO BACK TO INIT PHASE AFTER EVERYTHING IS FINISHED
-    NS_LOG_INFO("Go back to init in "<<std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0))+Seconds(2000) << "seconds");
-    Simulator::Schedule(std::max(Seconds(emitTime)-Simulator::Now(),Seconds(0))+Seconds(2000),
+    double period = 3600*24;
+    Time interval_init = Seconds(m_emittime)-Simulator::Now()+Seconds(3600);
+    NS_LOG_INFO("Go back to init in "<<interval_init.GetSeconds() << "seconds");
+    Simulator::Schedule(
+        Seconds(period-std::fmod(Simulator::Now().GetSeconds(),period)),
+        //interval_init,
         &ConfirmedMessagesComponent::SwitchToState, this, ObjectPhase::initialize);
 }
 
@@ -416,7 +461,7 @@ LinkCheckComponent::OnReceivedPacket(Ptr<const Packet> packet,
                                      Ptr<EndDeviceStatus> status,
                                      Ptr<NetworkStatus> networkStatus)
 {
-    NS_LOG_FUNCTION(this->GetTypeId() << packet << networkStatus);
+    NS_LOG_FUNCTION_NOARGS(/*this->GetTypeId() << packet << networkStatus*/);
 
     // We will only act just before reply, when all Gateways will have received
     // the packet.

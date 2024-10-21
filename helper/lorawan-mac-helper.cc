@@ -543,6 +543,13 @@ LorawanMacHelper::SetSpreadingFactorsUp(NodeContainer endDevices,
             // NS_LOG_DEBUG ("sfQuantity[6] = " << sfQuantity[6]);
         }
 
+        // for (unsigned i=0;i<sfQuantity.size();i++){
+        //     if (sfQuantity[i]) {
+        //         NS_LOG_INFO("STA"<<object->GetId()<<" linked to GW"<<bestGateway->GetId()<<" SF "<<7+i);
+        //         break;
+        //     }
+        // }
+        NS_LOG_INFO("STA"<<object->GetId()<<" linked to GW"<<bestGateway->GetId()<<" SF "<<(unsigned)mac->GetDataRate());
         /*
 
         // Get the Gw sensitivity

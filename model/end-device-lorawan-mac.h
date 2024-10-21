@@ -228,6 +228,8 @@ class EndDeviceLorawanMac : public LorawanMac
     */
    void SetFPort(uint8_t port);
 
+   uint8_t GetFPort();
+
     /**
      * Add the necessary options and MAC commands to the LoraFrameHeader.
      *
