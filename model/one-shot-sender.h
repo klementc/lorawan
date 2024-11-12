@@ -77,7 +77,10 @@ class OneShotSender : public Application
      */
     void StopApplication() override;
 
+    void SetPayloadSize(uint32_t packetsize);
+
   private:
+    uint32_t m_packetSize;
     Time m_sendTime;       //!< The time at which to send the packet.
     EventId m_sendEvent;   //!< The sending event.
     Ptr<LorawanMac> m_mac; //!< The MAC layer of this node.

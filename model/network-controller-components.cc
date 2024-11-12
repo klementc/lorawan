@@ -146,7 +146,6 @@ std::pair<LoraTag, LoraDeviceAddress> ConfirmedMessagesComponent::SelectParamsFo
     auto selectedParams = std::make_pair(LoraDeviceAddress(), registeredNodes.begin()->second);
     double lowestDR;
     double drtmp;
-    static double thresholdUpdate = 3; // 3 days
     switch (SELECTED_POLICY) {
         case txParamsPolicy::ALL_MACHINES:
             // Policy 1: All machines receive the message -> select the highest SF
@@ -194,7 +193,7 @@ std::pair<LoraTag, LoraDeviceAddress> ConfirmedMessagesComponent::SelectParamsFo
                 NS_LOG_INFO("THRESHCOMP: "<<std::get<1>(params.second).GetSeconds()<<" : "<<std::get<1>(params.second).GetSeconds()/(3600*24));
                 if (std::get<1>(params.second).GetSeconds()/(3600*24)>thresholdUpdate)
                 {
-                    NS_LOG_INFO("ABOVE THRESHOLD: "<<std::get<1>(params.second).GetSeconds()/(3600*24)<<" with SF="<<std::get<0>(params.second).GetSpreadingFactor());
+                    NS_LOG_DEBUG("ABOVE THRESHOLD: "<<std::get<1>(params.second).GetSeconds()/(3600*24)<<" with SF="<<std::get<0>(params.second).GetSpreadingFactor());
                     drtmp = 0;
                     for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==std::get<0>(params.second).GetSpreadingFactor()) {drtmp=i;break;}}
                     if (drtmp < lowestDR) {
@@ -204,12 +203,22 @@ std::pair<LoraTag, LoraDeviceAddress> ConfirmedMessagesComponent::SelectParamsFo
                 }
             }
             break;
+        case txParamsPolicy::FIXED_BY_USER:
+            for (auto params : registeredNodes) {
+                std::get<0>(params.second).SetSpreadingFactor(sfdr[FIXED_BY_USER_DR]);
+                selectedParams = std::make_pair(params.first, params.second);
+            }
+            break;
         default:
             NS_LOG_ERROR("Tx paramaters policy does not exist");
             exit(1);
     }
-    std::get<0>(selectedParams.second).SetFrequency(869.525);
-    NS_LOG_INFO("Make multicast using DR: "<<lowestDR);
+    if(SELECTED_POLICY==txParamsPolicy::FIXED_BY_USER){
+        std::get<0>(selectedParams.second).SetFrequency(FIXED_BY_USER_FREQ);
+    } else {
+        std::get<0>(selectedParams.second).SetFrequency(869.525);
+    }
+    NS_LOG_INFO("Make multicast using DR: "<<lowestDR<<" with freq: "<<std::get<0>(selectedParams.second).GetFrequency());
     return std::make_pair(std::get<0>(selectedParams.second),selectedParams.first);
 
 }
@@ -228,7 +237,8 @@ void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
         // must switch to advertising phase
         SwitchToState(ObjectPhase::advertize);
         isDestDefined = false;
-    } else if (currentState.first == ObjectPhase::initialize && fHdr.GetFPort()==ObjectCommHeader::FPORT_ED_MC_POLL){ // only if it's a request for an object to avoid collecting useless nodes info
+    } // only if it's a request for an object to avoid collecting useless nodes info, time check 3600 only to wait for a network in a "stable" state
+    else if (currentState.first == ObjectPhase::initialize && Simulator::Now()>Seconds(3600) && fHdr.GetFPort()==ObjectCommHeader::FPORT_ED_MC_POLL){
         std::stringstream s;
         packet->Print(s);
         SwitchToState(ObjectPhase::pool);
@@ -275,7 +285,11 @@ void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
 
         DownlinkFragment fragUseless; // just to get the size of the header
         auto plSize = 0.;
-        for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==dest.first.GetSpreadingFactor()) {plSize = maxPLsize[i]-fragUseless.GetSerializedSize();break;}}
+        if (SELECTED_POLICY == txParamsPolicy::FIXED_BY_USER){
+            plSize = FIXED_BY_USER_PLSIZE;
+        }else {
+            for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==dest.first.GetSpreadingFactor()) {plSize = maxPLsize[i]-fragUseless.GetSerializedSize();break;}}
+        }
         double nbFragmentsNoRedundancy = std::ceil(OBJECT_SIZE_BYTES/plSize);
         uint32_t nbFragmentsWithRedundancy = std::ceil(nbFragmentsNoRedundancy/CR);
         FragSessionSetupReq fragHdr(0,
@@ -375,10 +389,13 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
 
     // compute the size of the payload we are able to send given the tx parameters
     // rp002-1-0-4-regional-parameters.pdf page 48 to find the max payload sizes to use
+    int payloadSize;
     fHdr.SetFPort(ObjectCommHeader::FPORT_MULTICAST);
-
-    int payloadSize = maxPLsize[dr]-oHdr.GetSerializedSize();
-
+    if (SELECTED_POLICY == txParamsPolicy::FIXED_BY_USER){
+        payloadSize = FIXED_BY_USER_PLSIZE;
+    }else {
+        payloadSize = maxPLsize[dr]-oHdr.GetSerializedSize();
+    }
     Simulator::Schedule(std::max(Seconds(m_emittime)-Simulator::Now(),Seconds(0)),
         &ConfirmedMessagesComponent::SwitchToState, this, ObjectPhase::send);
 

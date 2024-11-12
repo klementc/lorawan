@@ -113,7 +113,7 @@ void ObjectCommApplicationMulticast::ProcessMulticastFragRecReq(Ptr<Packet const
         NS_LOG_DEBUG("Schedule timeout after "<<m_timeout);
         m_noMoreFragmentsRx = Simulator::Schedule(Seconds(m_timeout), &ObjectCommApplicationMulticast::ReceptionTimeout, this);
     } else {
-        NS_LOG_INFO("Update finished, started "<<m_nextMCRx.GetSeconds()<<" finished "<<Simulator::Now().GetSeconds()<<" total "<<(Simulator::Now()-m_nextMCRx).GetSeconds());
+        NS_LOG_INFO("Update finished, started "<<m_nextMCRx.GetSeconds()<<" finished "<<Simulator::Now().GetSeconds()<<" total "<<(Simulator::Now()-m_nextMCRx).GetSeconds()<<" DR.: "<<(unsigned)m_dr);
         m_lastUpdate = Simulator::Now();
         NS_LOG_DEBUG("Received " << m_currentReceived << "/" << m_objectSize << " bytes: stopping now, we have enough fragments to reconstruct the original data. Nb_frag_rec / Nb_frag_total: "<<m_nbFragsToFinish<<"/"<<m_nbFrags<<" with CR= "<<m_CR);
         NS_LOG_DEBUG("Multicast started "<<m_nextMCRx.GetSeconds()<<" finished "<<Simulator::Now().GetSeconds());

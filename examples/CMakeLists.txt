@@ -92,3 +92,11 @@ build_lib_example(
     ${libcore}
     ${liblorawan}
 )
+
+build_lib_example(
+  NAME uplink_dur_measurement
+  SOURCE_FILES  uplink_dur_measurement.cc
+  LIBRARIES_TO_LINK
+    ${libcore}
+    ${liblorawan}
+)

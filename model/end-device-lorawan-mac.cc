@@ -230,8 +230,6 @@ EndDeviceLorawanMac::DoSend(Ptr<Packet> packet)
         ApplyNecessaryOptions(frameHdr);
         packet->AddHeader(frameHdr);
 
-        NS_LOG_INFO("Added frame header of size " << frameHdr.GetSerializedSize() << " bytes.");
-
         // Check that MACPayload length is below the allowed maximum
         if (packet->GetSize() > m_maxAppPayloadForDataRate.at(m_dataRate))
         {

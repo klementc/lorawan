@@ -1,6 +1,7 @@
 #ifndef OBJECT_UTILITY_H
 #define OBJECT_UTILITY_H
 
+
 int OBJECT_SIZE_BYTES = 0; // size of the object to send in bytes
 /**
  * ratio to use between the number of coded and uncoded fragments, used for the redundancy mechanism to permit loss
@@ -11,7 +12,15 @@ int OBJECT_SIZE_BYTES = 0; // size of the object to send in bytes
  */
 double CR = 1;
 
-enum txParamsPolicy {ALL_MACHINES, FASTEST_MACHINES, THRESHOLD};
+enum txParamsPolicy {ALL_MACHINES, FASTEST_MACHINES, THRESHOLD, FIXED_BY_USER};
+
+// use these to send downlink requests with a specific configuration using FIXED_BY_USER policy
+double FIXED_BY_USER_FREQ = 869.525; //9.525; //868.1;
+uint8_t FIXED_BY_USER_DR = 5;
+double FIXED_BY_USER_PLSIZE = 150;
+
+
+double thresholdUpdate = 3; // number of days before update on threshold mode
 
 txParamsPolicy SELECTED_POLICY = txParamsPolicy::ALL_MACHINES;
 

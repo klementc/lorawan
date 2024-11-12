@@ -180,7 +180,7 @@ LoraPhy::GetOnAirTime(Ptr<Packet> packet, LoraTxParameters txParams)
 
     // Payload size
     uint32_t pl = packet->GetSize(); // Size in bytes
-    NS_LOG_DEBUG("Packet of size " << pl << " bytes");
+    NS_LOG_UNCOND("Packet of size " << pl << " bytes");
 
     // This step is needed since the formula deals with double values.
     // de = 1 when the low data rate optimization is enabled, 0 otherwise
@@ -188,7 +188,6 @@ LoraPhy::GetOnAirTime(Ptr<Packet> packet, LoraTxParameters txParams)
     double de = txParams.lowDataRateOptimizationEnabled ? 1 : 0;
     double h = txParams.headerDisabled ? 1 : 0;
     double crc = txParams.crcEnabled ? 1 : 0;
-
     // num and den refer to numerator and denominator of the time on air formula
     double num = 8 * pl - 4 * txParams.sf + 28 + 16 * crc - 20 * h;
     double den = 4 * (txParams.sf - 2 * de);

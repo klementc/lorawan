@@ -34,6 +34,7 @@ namespace lorawan
 NS_LOG_COMPONENT_DEFINE("OneShotSenderHelper");
 
 OneShotSenderHelper::OneShotSenderHelper()
+    : m_packetSize(10)
 {
     m_factory.SetTypeId("ns3::OneShotSender");
 }
@@ -48,6 +49,11 @@ OneShotSenderHelper::SetSendTime(Time sendTime)
     m_sendTime = sendTime;
 }
 
+void
+OneShotSenderHelper::SetPacketSize(uint32_t packetSize)
+{
+    m_packetSize = packetSize;
+}
 void
 OneShotSenderHelper::SetAttribute(std::string name, const AttributeValue& value)
 {
@@ -80,6 +86,7 @@ OneShotSenderHelper::InstallPriv(Ptr<Node> node) const
     Ptr<OneShotSender> app = m_factory.Create<OneShotSender>();
 
     app->SetSendTime(m_sendTime);
+    app->SetPayloadSize(m_packetSize);
 
     app->SetNode(node);
     node->AddApplication(app);

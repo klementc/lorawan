@@ -94,6 +94,7 @@ main(int argc, char* argv[])
     cmd.AddValue("CR", "Coding ratio to be used to code the data with redundancy", codingRatio);
     cmd.AddValue("duration","duration of the simulation", simTime);
     cmd.AddValue("policy", "ALL|FASTEST|THRESHOLD",policy);
+    cmd.AddValue("thresholdUpdate","Time in days before a mandatory update (THRESHOLD policy only)",thresholdUpdate);
     cmd.Parse(argc, argv);
 
 
@@ -106,7 +107,7 @@ main(int argc, char* argv[])
     // Logging
     //////////
     LogComponentEnable("BulkCommAppMulticast", LOG_LEVEL_ALL);
-    LogComponentEnable("ObjectCommApplicationMulticast", LOG_LEVEL_INFO);
+    LogComponentEnable("ObjectCommApplicationMulticast", LOG_LEVEL_ALL);
     LogComponentEnable("NetworkControllerComponent", LOG_LEVEL_INFO);
     LogComponentEnable("ClassAOpenWindowEndDeviceLorawanMac", LOG_LEVEL_INFO);
 
@@ -124,6 +125,8 @@ main(int argc, char* argv[])
         SELECTED_POLICY = txParamsPolicy::FASTEST_MACHINES;
     else if (policy =="THRESHOLD")
         SELECTED_POLICY = txParamsPolicy::THRESHOLD;
+    else if (policy == "FIXED_BY_USER")
+        SELECTED_POLICY = txParamsPolicy::FIXED_BY_USER;
     else
         NS_ABORT_MSG("SPECIFY A CORRECT POLICY");
 

@@ -47,12 +47,13 @@ OneShotSender::GetTypeId()
 }
 
 OneShotSender::OneShotSender()
+    : m_packetSize(10)
 {
     NS_LOG_FUNCTION_NOARGS();
 }
 
 OneShotSender::OneShotSender(Time sendTime)
-    : m_sendTime(sendTime)
+    : m_sendTime(sendTime), m_packetSize(10)
 {
     NS_LOG_FUNCTION_NOARGS();
 }
@@ -71,12 +72,20 @@ OneShotSender::SetSendTime(Time sendTime)
 }
 
 void
+OneShotSender::SetPayloadSize(uint32_t packetsize)
+{
+    NS_LOG_FUNCTION(this << packetsize);
+
+    m_packetSize = packetsize;
+}
+
+void
 OneShotSender::SendPacket()
 {
     NS_LOG_FUNCTION(this);
 
     // Create and send a new packet
-    Ptr<Packet> packet = Create<Packet>(10);
+    Ptr<Packet> packet = Create<Packet>(m_packetSize);
     m_mac->Send(packet);
 }
 

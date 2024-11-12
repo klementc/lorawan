@@ -81,6 +81,7 @@ class OneShotSenderHelper
      * \todo It does not make sense that all applications send at the exact same time.
      */
     void SetSendTime(Time sendTime);
+    void SetPacketSize(uint32_t sendTime);
 
   private:
     /**
@@ -92,6 +93,7 @@ class OneShotSenderHelper
      */
     Ptr<Application> InstallPriv(Ptr<Node> node) const;
 
+    uint32_t m_packetSize;
     ObjectFactory m_factory; //!< The object factory
     Time m_sendTime; //!< Time at which the OneShotSender applications will be configured to send
                      //!< the packet
