@@ -17,7 +17,7 @@ enum txParamsPolicy {ALL_MACHINES, FASTEST_MACHINES, THRESHOLD, FIXED_BY_USER};
 // use these to send downlink requests with a specific configuration using FIXED_BY_USER policy
 double FIXED_BY_USER_FREQ = 869.525; //9.525; //868.1;
 uint8_t FIXED_BY_USER_DR = 5;
-double FIXED_BY_USER_PLSIZE = 150;
+double FIXED_BY_USER_PLSIZE = 230;
 
 
 double thresholdUpdate = 3; // number of days before update on threshold mode

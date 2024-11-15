@@ -100,7 +100,9 @@ class ConfirmedMessagesComponent : public NetworkControllerComponent
      */
     std::vector<uint8_t> sfdr {12, 11, 10, 9, 8, 7, 7};
     // See  RP002-1.0.4 Regional Parameters
-    std::vector<uint32_t> maxPLsize {59, 59, 59, 123, 230, 230, 230, 230};
+    //std::vector<uint32_t> maxPLsize {59, 59, 59, 123, 230, 230, 230, 230};
+    // replaced by the following due to real hardware limitations observed
+    std::vector<uint32_t> maxPLsize {39, 39, 39, 110, 219, 230, 230, 230};
     static TypeId GetTypeId();
 
     ConfirmedMessagesComponent();           //!< Default constructor

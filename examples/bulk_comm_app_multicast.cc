@@ -77,12 +77,14 @@ main(int argc, char* argv[])
     int obj_size = 200;
     int nb_ED = 1;
     int seed = 1;
+    int DR = -1;
     double dist = 0;
     double delayReTx = 50;
     double codingRatio = 0.9; // ~10% of error supported
     std::string position = "Fixed"; // "Fixed" for stations at the exact distance dist to the GW, or "Random" for machines at a random distance between 0 and dist
     std::string policy = "ALL";
-
+    int singleRound = 0;
+    int useRNG = 1;
     CommandLine cmd(__FILE__);
     cmd.AddValue("verbose", "Whether to print output or not", verbose);
     cmd.AddValue("nb_ED", "Number of end devices in the simulated platform", nb_ED);
@@ -95,6 +97,9 @@ main(int argc, char* argv[])
     cmd.AddValue("duration","duration of the simulation", simTime);
     cmd.AddValue("policy", "ALL|FASTEST|THRESHOLD",policy);
     cmd.AddValue("thresholdUpdate","Time in days before a mandatory update (THRESHOLD policy only)",thresholdUpdate);
+    cmd.AddValue("DR","force a DR value for all machines",DR);
+    cmd.AddValue("singleRound","Stop applications after a single round of update (1/0)", singleRound);
+    cmd.AddValue("useRNG","de/activate random delays between failed uplink messages", useRNG);
     cmd.Parse(argc, argv);
 
 
@@ -228,10 +233,15 @@ main(int argc, char* argv[])
     /* Communication in the LoRa zone */
     for (int i=0; i<nb_ED; i++) {
         Ptr<ObjectCommApplicationMulticast> app = factory.Create<ObjectCommApplicationMulticast>();
-        app->SetStartTime(Seconds(rng->GetInteger(10, 1000)));
+        double delay = useRNG==1 ? rng->GetInteger(10, 1000) : 10;
+        app->SetStartTime(Seconds(delay));
         app->SetMCR(codingRatio);
         app->SetNode(endDevices.Get(i));
         app->SetMinDelayReTx(delayReTx);
+        if (!useRNG)
+            app->CancelRNG();
+        if (singleRound)
+            app->setSingleUpdate();
 
         endDevices.Get(i)->AddApplication(app);
     }
@@ -247,7 +257,14 @@ main(int argc, char* argv[])
     helper.Install(phyHelper, macHelper, gateways);
 
     // Set spreading factors up
-    auto sf = LorawanMacHelper::SetSpreadingFactorsUp(endDevices, gateways, channel);
+    std::vector<int> sf;
+    if(DR == -1){
+        sf = LorawanMacHelper::SetSpreadingFactorsUp(endDevices, gateways, channel);
+    } else {
+        std::vector<double> sfQuantity(6);
+        sfQuantity[5-DR] = 1;
+        sf = LorawanMacHelper::SetSpreadingFactorsGivenDistribution(endDevices, gateways,sfQuantity);
+    }
     NS_LOG_INFO("SF INFO: ");
     for (size_t i=0;i<sf.size();i++)
         NS_LOG_INFO("SF INFO "<<i <<" "<<sf.at(i));

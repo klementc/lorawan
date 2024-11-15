@@ -136,6 +136,10 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
 bool alreadyScheduled = false;
 double freq = 0;
 uint8_t dr = 10;
+double EMIT_DELAY = 300;//3600*10;
+double DUR_POOLING = 300;//3600*6;
+double INIT_TIME = 0; // 3600
+
 std::pair<ConfirmedMessagesComponent::ObjectPhase, double> currentState = std::make_pair(ConfirmedMessagesComponent::ObjectPhase::initialize, 0);
 std::map<LoraDeviceAddress,std::tuple<LoraTag,ns3::Time>> registeredNodes;
 LoraDeviceAddress devAddr;
@@ -232,13 +236,12 @@ void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
     static bool isDestDefined = false;
     LoraFrameHeader fHdr = getFrameHdr(packet);
 
-    double dur_pooling = 3600*6;
-    if(currentState.first == ObjectPhase::pool && currentState.second+dur_pooling<=(Simulator::Now()).GetSeconds()) {
+    if(currentState.first == ObjectPhase::pool && currentState.second+DUR_POOLING<=(Simulator::Now()).GetSeconds()) {
         // must switch to advertising phase
         SwitchToState(ObjectPhase::advertize);
         isDestDefined = false;
     } // only if it's a request for an object to avoid collecting useless nodes info, time check 3600 only to wait for a network in a "stable" state
-    else if (currentState.first == ObjectPhase::initialize && Simulator::Now()>Seconds(3600) && fHdr.GetFPort()==ObjectCommHeader::FPORT_ED_MC_POLL){
+    else if (currentState.first == ObjectPhase::initialize && Simulator::Now()>Seconds(INIT_TIME) && fHdr.GetFPort()==ObjectCommHeader::FPORT_ED_MC_POLL){
         std::stringstream s;
         packet->Print(s);
         SwitchToState(ObjectPhase::pool);
@@ -280,7 +283,7 @@ void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
             freq = dest.first.GetFrequency();
             dr = 0;
             for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==dest.first.GetSpreadingFactor()) {dr=i;break;}}
-            m_emittime = (Simulator::Now()+Seconds(3600*10)).GetSeconds();
+            m_emittime = (Simulator::Now()+Seconds(EMIT_DELAY)).GetSeconds();
         }
 
         DownlinkFragment fragUseless; // just to get the size of the header

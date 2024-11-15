@@ -59,6 +59,11 @@ class ObjectCommApplicationMulticast : public Application
 
     void SetMCR(double cr);
 
+    // if you want a fixed interval to re-schedule failed messages. Used for comparison to small scale real-scenario. At large scale, randomness is good to try avoiding collisions
+    void CancelRNG();
+    // stop the application after one successful update instead of restarting
+    void setSingleUpdate();
+
   private:
     Ptr<ClassAOpenWindowEndDeviceLorawanMac> m_mac; //!< The MAC layer of this node, has to provide open windows
     uint64_t m_objectSize; //!< Total size of the object to retrieve
@@ -73,6 +78,9 @@ class ObjectCommApplicationMulticast : public Application
     EventId m_noMoreFragmentsRx;
     std::vector<bool> m_fragmentMap;
     ns3::Time m_lastUpdate;
+    bool m_singleUpdate;
+    bool m_useRNG;
+    EventId m_nextInitReq;
     /**
      * Stores the number of fragments necessary for decoding the entire object with the redundancy mechanism
      * We can stop the open window after recieving m_nbFragsToFinish out of size(m_fragmentMap)
