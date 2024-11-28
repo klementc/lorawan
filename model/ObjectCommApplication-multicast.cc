@@ -58,7 +58,7 @@ ObjectCommApplicationMulticast::GetTypeId()
 }
 
 ObjectCommApplicationMulticast::ObjectCommApplicationMulticast()
-    : m_frequency(-1), m_dr(0), m_lastUpdate(0), m_singleUpdate(false), m_useRNG(false)
+    : m_frequency(-1), m_dr(0), m_lastUpdate(0), m_singleUpdate(false), m_useRNG(true)
 {
     NS_LOG_FUNCTION_NOARGS();
     m_rng = CreateObject<UniformRandomVariable>();
@@ -83,9 +83,9 @@ void ObjectCommApplicationMulticast::callbackCheckEndTx(std::string context, uin
     // if failure, retry later
     if(success == false) {
         // failed getting class C info? try again TODO: consider the timeout of the frag session
-        if (fHdr.GetFPort() == ObjectCommHeader::FPORT_ED_MC_CLASSC_UP && multicastStarted != false) {
-            NS_LOG_INFO("FAILED GETTING CLASS C FEEDBACK");
-            double delay = m_useRNG ? m_rng->GetInteger(100, 500) : m_min_delay_retransmission;
+        if (fHdr.GetFPort() == ObjectCommHeader::FPORT_ED_MC_CLASSC_UP /*&& multicastStarted != false*/) {
+            double delay = m_useRNG ? m_min_delay_retransmission + m_rng->GetInteger(0, 100) : m_min_delay_retransmission;
+            NS_LOG_INFO("FAILED GETTING CLASS C FEEDBACK, reschedule after "<<delay);
             Simulator::Schedule(Seconds(delay), &ObjectCommApplicationMulticast::SendClassCSetupRequest, this);
         }
         /*else if (multicastStarted==false) {
@@ -112,9 +112,10 @@ void ObjectCommApplicationMulticast::ProcessMulticastFragRecReq(Ptr<Packet const
     m_noMoreFragmentsRx.Cancel();
 
     m_currentReceived += dlHdr.getFragmentSize();
+    NS_LOG_INFO("Client received "<<dlHdr.getFragmentSize()<<" bytes, total "<<m_currentReceived<<" fragsize:"<<m_fragSize);
     m_fragmentMap[dlHdr.getFragNumber()] = true;
     // open window for future reception or finish
-    if (m_currentReceived < m_nbFragsToFinish*m_fragSize) {
+    if (m_currentReceived < m_objectSize) {
         m_mac->openFreeReceiveWindow(m_frequency, m_dr);
         // we set the timeout again since we are waiting for more fragments
         NS_LOG_DEBUG("Schedule timeout after "<<m_timeout);
@@ -148,7 +149,11 @@ void ObjectCommApplicationMulticast::ProcessClassCSessionReq(Ptr<Packet const> p
     if (Seconds(cHdr.GetSessionTime())<Simulator::Now()) {
         NS_LOG_DEBUG("Failed reception because got answer too late, try again later...");
         multicastStarted = false;
+        // schedule the next tx. It will be canceled if an ack is received before
+        double delay = m_useRNG ? m_min_delay_retransmission + m_rng->GetInteger(0,100) : m_min_delay_retransmission;
+        m_nextInitReq = Simulator::Schedule(Seconds(delay), &ObjectCommApplicationMulticast::SendMulticastInitRequest, this);
     } else {
+        NS_LOG_DEBUG("Open continuous receive window at time "<<cHdr.GetSessionTime());
         m_nextMCRx = Seconds(cHdr.GetSessionTime());
         Simulator::Schedule(Seconds(cHdr.GetSessionTime())-Simulator::Now(),
             &ClassAOpenWindowEndDeviceLorawanMac::openFreeReceiveWindow, m_mac, m_frequency, m_dr);
@@ -195,17 +200,21 @@ void ObjectCommApplicationMulticast::ProcessFragSessionSetupReq(Ptr<Packet const
     m_currentReceived = 0;
     m_nbFrags = req.getNbFrag();
     m_fragSize = req.getFragSize();
-    m_objectSize = m_nbFrags * m_fragSize;
+    m_objectSize = m_nbFrags * (m_fragSize-3);
     m_fragmentMap = std::vector<bool>(req.getNbFrag(), false);
+
     /**
      * m_nbFragsToFinish is the average number of blocks to recover the original object
      * the value is based on Gallager's  results showing the average number of fragments
      * to receive for full receptino. We use it to avoid simulating the whole recovery process
      */
-    m_nbFragsToFinish = (m_CR * (double)m_nbFrags) + 2;
+    if (m_CR!=0)
+        m_nbFragsToFinish = (m_CR * (double)m_nbFrags) + 2;
+    else
+        m_nbFragsToFinish = m_nbFrags;
     NS_LOG_DEBUG("ACK Frag setup: Object of " << m_objectSize<< "bytes, Nb fragments: "<<m_fragmentMap.size()<<" fragment Size: "<< (uint32_t)req.getFragSize());
 
-    Simulator::Schedule(Seconds(m_min_delay_retransmission), &ObjectCommApplicationMulticast::SendClassCSetupRequest, this);
+    Simulator::Schedule(Seconds(0.5), &ObjectCommApplicationMulticast::SendClassCSetupRequest, this);
 }
 
 void ObjectCommApplicationMulticast::callbackReception(std::string context, Ptr<Packet const> packet) {
@@ -273,7 +282,7 @@ void ObjectCommApplicationMulticast::SendMulticastInitRequest()
     m_mac->Send(packet);
 
     // schedule the next tx. It will be canceled if an ack is received before
-    double delay = m_useRNG ? m_rng->GetInteger(m_min_delay_retransmission, m_min_delay_retransmission+100) : m_min_delay_retransmission;
+    double delay = m_useRNG ? m_min_delay_retransmission + m_rng->GetInteger(0,100) : m_min_delay_retransmission;
     m_nextInitReq = Simulator::Schedule(Seconds(delay), &ObjectCommApplicationMulticast::SendMulticastInitRequest, this);
 }
 
@@ -283,8 +292,10 @@ void ObjectCommApplicationMulticast::PeriodicUpdateScheduler()
     // if there is already a transmission don't start a new round now, if not, start new update round now- For all, schedule the next call to the scheduler later after <period>
     double period = 3600*24;
     NS_LOG_INFO("Periodic scheduler, already started? "<<multicastStarted<<" schedule next check after "<<period<<" seconds. current age: "<<(Simulator::Now()-m_lastUpdate).GetSeconds());
-    if (! multicastStarted) {
-        SendMulticastInitRequest();
+    if (! multicastStarted && !(m_singleUpdate == true && m_lastUpdate.GetSeconds()>0)) {
+        // schedule the init after a random delay to reduce the probability of collisions
+        m_lastUpdate = Simulator::Now(); // to compute the threshold val
+        Simulator::Schedule(Seconds(m_rng->GetInteger(0, 1000)), &ObjectCommApplicationMulticast::SendMulticastInitRequest, this);
     }
 
     Simulator::Schedule(Seconds(period-std::fmod(Simulator::Now().GetSeconds(),period)), &ObjectCommApplicationMulticast::PeriodicUpdateScheduler, this);

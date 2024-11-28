@@ -108,6 +108,7 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
         ProcessUOTARequest(packet, status, networkStatus);
     }
     else if (fHdr.GetFPort() == ObjectCommHeader::FPORT_ED_MC_CLASSC_UP) {
+        NS_LOG_DEBUG("Received classC Session req");
         CreateClassCMulticastReq(packet, status, networkStatus);
     }
     else if (mHdr.GetMType() == LorawanMacHeader::CONFIRMED_DATA_UP)
@@ -136,9 +137,6 @@ ConfirmedMessagesComponent::OnReceivedPacket(Ptr<const Packet> packet,
 bool alreadyScheduled = false;
 double freq = 0;
 uint8_t dr = 10;
-double EMIT_DELAY = 300;//3600*10;
-double DUR_POOLING = 300;//3600*6;
-double INIT_TIME = 0; // 3600
 
 std::pair<ConfirmedMessagesComponent::ObjectPhase, double> currentState = std::make_pair(ConfirmedMessagesComponent::ObjectPhase::initialize, 0);
 std::map<LoraDeviceAddress,std::tuple<LoraTag,ns3::Time>> registeredNodes;
@@ -159,7 +157,7 @@ std::pair<LoraTag, LoraDeviceAddress> ConfirmedMessagesComponent::SelectParamsFo
                 // compute if this node is better than the previously selected
                 drtmp = 0;
                 for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==std::get<0>(params.second).GetSpreadingFactor()) {drtmp=i;break;}}
-                if (drtmp < lowestDR) {
+                if (drtmp <= lowestDR) {
                     lowestDR = drtmp;
                     selectedParams = params;
                 }
@@ -173,7 +171,7 @@ std::pair<LoraTag, LoraDeviceAddress> ConfirmedMessagesComponent::SelectParamsFo
                 // compute if this node is better than the previously selected
                 drtmp = 0;
                 for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==std::get<0>(params.second).GetSpreadingFactor()) {drtmp=i;break;}}
-                if (drtmp > lowestDR) {
+                if (drtmp >= lowestDR) {
                     lowestDR = drtmp;
                     selectedParams = std::make_pair(params.first, params.second);
                 }
@@ -181,7 +179,7 @@ std::pair<LoraTag, LoraDeviceAddress> ConfirmedMessagesComponent::SelectParamsFo
             break;
         case txParamsPolicy::THRESHOLD:
             // Select fastest policy, except if time exceeds a threshold, in which case select the slowest that exceeds the threshold
-            lowestDR = 0; // compute lowest DR possible
+            lowestDR = -1; // compute lowest DR possible
             for (auto params : registeredNodes) {
                 NS_LOG_DEBUG("Processing params for "<<params.first<<" SF: "<<(uint64_t)std::get<0>(params.second).GetSpreadingFactor()<<" Freq: "<<std::get<0>(params.second).GetFrequency()<<" age(days): "<<std::get<1>(params.second).GetSeconds()/(3600*24));
                 // compute if this node is better than the previously selected
@@ -195,9 +193,9 @@ std::pair<LoraTag, LoraDeviceAddress> ConfirmedMessagesComponent::SelectParamsFo
             // check for nodes that exceed
             for (auto params : registeredNodes) {
                 NS_LOG_INFO("THRESHCOMP: "<<std::get<1>(params.second).GetSeconds()<<" : "<<std::get<1>(params.second).GetSeconds()/(3600*24));
-                if (std::get<1>(params.second).GetSeconds()/(3600*24)>thresholdUpdate)
+                if (((int)std::get<1>(params.second).GetSeconds()%(3600*24))>thresholdUpdate) // 3600*24 to reset the threshold update every day (in our experiments, we consider the model is updated daily), change it for using thresholds over longer periods
                 {
-                    NS_LOG_DEBUG("ABOVE THRESHOLD: "<<std::get<1>(params.second).GetSeconds()/(3600*24)<<" with SF="<<std::get<0>(params.second).GetSpreadingFactor());
+                    NS_LOG_INFO("ABOVE THRESHOLD: "<<((int)std::get<1>(params.second).GetSeconds()%(3600*24))<<" with SF="<<std::get<0>(params.second).GetSpreadingFactor());
                     drtmp = 0;
                     for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==std::get<0>(params.second).GetSpreadingFactor()) {drtmp=i;break;}}
                     if (drtmp < lowestDR) {
@@ -210,6 +208,13 @@ std::pair<LoraTag, LoraDeviceAddress> ConfirmedMessagesComponent::SelectParamsFo
         case txParamsPolicy::FIXED_BY_USER:
             for (auto params : registeredNodes) {
                 std::get<0>(params.second).SetSpreadingFactor(sfdr[FIXED_BY_USER_DR]);
+                selectedParams = std::make_pair(params.first, params.second);
+            }
+            break;
+        case txParamsPolicy::FUOTA_BASELINE:
+            // use DR0 SF12
+            for (auto params : registeredNodes) {
+                std::get<0>(params.second).SetSpreadingFactor(sfdr[0]);
                 selectedParams = std::make_pair(params.first, params.second);
             }
             break;
@@ -250,6 +255,7 @@ void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
     if(currentState.first == ObjectPhase::pool && fHdr.GetFPort()==ObjectCommHeader::FPORT_ED_MC_POLL) {
         // Pooling phase, do not send any ACK during this phase
         ObjectCommHeader odr;
+        //if(getFrameContent(packet)->GetSize()!=5){return;}
         getFrameContent(packet)->RemoveHeader(odr);
 
         status->m_reply.frameHeader.SetAck(false);
@@ -267,6 +273,16 @@ void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
             dest = SelectParamsForBroadcast();
             isDestDefined = true;
         }
+        // if the datarate of the node requesting is lower than the scheduled datarate, dont answer him. he will get another chance in the next round
+        Ptr<Packet> myPacket = packet->Copy();
+        LoraTag tagtmp;
+        myPacket->RemovePacketTag(tagtmp);
+
+        if(tagtmp.GetSpreadingFactor() > dest.first.GetSpreadingFactor()){
+            NS_LOG_DEBUG("TOCHECK: Ignore node, spreading factor lower than scheduled "<<(unsigned)tagtmp.GetSpreadingFactor()<<" < "<<(unsigned)dest.first.GetSpreadingFactor());
+            return;
+        }
+
 
         // Acknowledge clients with the broadcast information
         NS_LOG_DEBUG("ADVERTISING");
@@ -294,7 +310,10 @@ void ConfirmedMessagesComponent::ProcessUOTARequest(Ptr<const Packet> packet,
             for(long unsigned int i=0;i<sfdr.size();i++){if(sfdr[i]==dest.first.GetSpreadingFactor()) {plSize = maxPLsize[i]-fragUseless.GetSerializedSize();break;}}
         }
         double nbFragmentsNoRedundancy = std::ceil(OBJECT_SIZE_BYTES/plSize);
-        uint32_t nbFragmentsWithRedundancy = std::ceil(nbFragmentsNoRedundancy/CR);
+        uint32_t nbFragmentsWithRedundancy = nbFragmentsNoRedundancy;
+        if(CR!=0) {
+            nbFragmentsWithRedundancy = std::ceil(nbFragmentsNoRedundancy/CR);
+        }
         FragSessionSetupReq fragHdr(0,
                                     nbFragmentsWithRedundancy,
                                     static_cast<uint8_t>(plSize),
@@ -395,15 +414,28 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
     int payloadSize;
     fHdr.SetFPort(ObjectCommHeader::FPORT_MULTICAST);
     if (SELECTED_POLICY == txParamsPolicy::FIXED_BY_USER){
-        payloadSize = FIXED_BY_USER_PLSIZE;
+        payloadSize = FIXED_BY_USER_PLSIZE-oHdr.GetSerializedSize();
     }else {
         payloadSize = maxPLsize[dr]-oHdr.GetSerializedSize();
     }
     Simulator::Schedule(std::max(Seconds(m_emittime)-Simulator::Now(),Seconds(0)),
         &ConfirmedMessagesComponent::SwitchToState, this, ObjectPhase::send);
 
-    double nbFragmentsNoRedundancy = std::ceil(OBJECT_SIZE_BYTES/payloadSize);
-    uint32_t nbFragmentsWithRedundancy = std::ceil(nbFragmentsNoRedundancy/CR);
+    double nbFragmentsNoRedundancy = std::ceil(OBJECT_SIZE_BYTES/((double)payloadSize));
+    uint32_t nbFragmentsWithRedundancy = nbFragmentsNoRedundancy;
+    if(CR!=0) {
+        nbFragmentsWithRedundancy = std::ceil(nbFragmentsNoRedundancy/CR);
+    }
+
+    static uint8_t nbDays = 0;
+    if(Simulator::Now().GetSeconds()/(3600*24) >=nbDays ) {
+        nbDays++;
+        m_nbRound=0;
+    }
+    m_nbRound ++;
+    NS_LOG_INFO("Start round "<<m_nbRound);
+
+    NS_LOG_INFO("With PLSIZE "<<payloadSize<<" and "<<nbFragmentsWithRedundancy);
     NS_LOG_INFO("nb fragments no red: "<<nbFragmentsNoRedundancy<<" with CR="<<CR<<", nb fragments ="<<nbFragmentsWithRedundancy);
     for(uint32_t nbSent=0;nbSent<nbFragmentsWithRedundancy; nbSent++) {
         NS_LOG_INFO("Schedule SendThroughGW in " << m_emittime << " s, tot="<<nbSent<<"/"<<OBJECT_SIZE_BYTES/payloadSize <<" DR: "<<(uint64_t)dr<<" Freq: "<<freq<<" pl size: "<<payloadSize);
@@ -428,12 +460,11 @@ void ConfirmedMessagesComponent::EmitObject(Ptr<Packet> packetTemplate, Ptr<Netw
     }
 
     // GO BACK TO INIT PHASE AFTER EVERYTHING IS FINISHED
-    double period = 3600*24;
-    Time interval_init = Seconds(m_emittime)-Simulator::Now()+Seconds(3600);
+    Time interval_init = Seconds(inter_FUOTA_interval);
     NS_LOG_INFO("Go back to init in "<<interval_init.GetSeconds() << "seconds");
     Simulator::Schedule(
-        Seconds(period-std::fmod(Simulator::Now().GetSeconds(),period)),
-        //interval_init,
+        //Seconds(period-std::fmod(Simulator::Now().GetSeconds(),period)),
+        interval_init,
         &ConfirmedMessagesComponent::SwitchToState, this, ObjectPhase::initialize);
 }
 

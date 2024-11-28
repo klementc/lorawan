@@ -73,36 +73,29 @@ void logEnergy(DeviceEnergyModelContainer devices) {
 int
 main(int argc, char* argv[])
 {
-    bool verbose = false;
     int obj_size = 200;
-    int nb_ED = 1;
+    int nb_ED = 4;
     int seed = 1;
-    int DR = -1;
-    double dist = 0;
-    double delayReTx = 50;
+    double delayReTx = 60;
     double codingRatio = 0.9; // ~10% of error supported
     std::string position = "Fixed"; // "Fixed" for stations at the exact distance dist to the GW, or "Random" for machines at a random distance between 0 and dist
     std::string policy = "THRESHOLD";
-    int singleRound = 0;
-    int useRNG = 1;
+    int singleRound = 1;
+    int useRNG = 0;
 
     double fbu_freq = 0;
     uint8_t fbu_dr = 10;
     double fbu_plsize = 0;
 
     CommandLine cmd(__FILE__);
-    cmd.AddValue("verbose", "Whether to print output or not", verbose);
-    cmd.AddValue("nb_ED", "Number of end devices in the simulated platform", nb_ED);
     cmd.AddValue("obj_size", "size of the transfered object in bytes", obj_size);
     cmd.AddValue("seed", "random seed", seed);
-    cmd.AddValue("dist", "distance between the ED and the GW (x and y maximum distance for Random positionning)", dist);
     cmd.AddValue("delayReTx", "delay between consecutive request after a communication fail", delayReTx);
-    cmd.AddValue("position", "Fixed=exactly dist from the GW, Random=random position between 0 and dist to the GW", position);
     cmd.AddValue("CR", "Coding ratio to be used to code the data with redundancy", codingRatio);
     cmd.AddValue("duration","duration of the simulation", simTime);
+
     cmd.AddValue("policy", "ALL|FASTEST|THRESHOLD",policy);
     cmd.AddValue("thresholdUpdate","Time in days before a mandatory update (THRESHOLD policy only)",thresholdUpdate);
-    cmd.AddValue("DR","force a DR value for all machines",DR);
     cmd.AddValue("singleRound","Stop applications after a single round of update (1/0)", singleRound);
     cmd.AddValue("useRNG","de/activate random delays between failed uplink messages", useRNG);
 
@@ -122,20 +115,23 @@ main(int argc, char* argv[])
     //////////
     LogComponentEnable("BulkCommAppMulticast", LOG_LEVEL_ALL);
     LogComponentEnable("ObjectCommApplicationMulticast", LOG_LEVEL_ALL);
-    LogComponentEnable("NetworkControllerComponent", LOG_LEVEL_INFO);
+    LogComponentEnable("NetworkControllerComponent", LOG_LEVEL_DEBUG);
     LogComponentEnable("ClassAOpenWindowEndDeviceLorawanMac", LOG_LEVEL_INFO);
-    LogComponentEnable("LoraPhy", LOG_LEVEL_DEBUG);
+    //LogComponentEnable("LoraPhy", LOG_LEVEL_DEBUG);
 
-    LogComponentEnable("ClassAEndDeviceLorawanMac", LOG_LEVEL_INFO);
-    LogComponentEnable("BufferedForwarder", LOG_LEVEL_INFO);
+    LogComponentEnable("ClassAEndDeviceLorawanMac", LOG_LEVEL_DEBUG);
+    LogComponentEnable("BufferedForwarder", LOG_LEVEL_DEBUG);
     LogComponentEnable("LorawanMacHelper", LOG_LEVEL_INFO);
 
     LogComponentEnableAll(LOG_PREFIX_FUNC);
     LogComponentEnableAll(LOG_PREFIX_NODE);
     LogComponentEnableAll(LOG_PREFIX_TIME);
 
-    if (policy=="ALL")
+    NS_LOG_INFO("WITH POLICY '"<<policy.c_str()<<"'");
+    if (policy.compare("ALL")==0)
         SELECTED_POLICY = txParamsPolicy::ALL_MACHINES;
+    else if (policy.compare("FUOTA_BASELINE")==0)
+        SELECTED_POLICY = txParamsPolicy::FUOTA_BASELINE;
     else if (policy=="FASTEST")
         SELECTED_POLICY = txParamsPolicy::FASTEST_MACHINES;
     else if (policy =="THRESHOLD")
@@ -146,21 +142,22 @@ main(int argc, char* argv[])
         FIXED_BY_USER_DR = fbu_dr;
         FIXED_BY_USER_FREQ = fbu_freq;
         FIXED_BY_USER_PLSIZE = fbu_plsize;
-    } else
+    } else {
         NS_ABORT_MSG("SPECIFY A CORRECT POLICY");
-
+        exit(1);
+    }
     NS_LOG_INFO("Using policy "<<SELECTED_POLICY);
 
     Ptr<UniformRandomVariable> rng = CreateObject<UniformRandomVariable>();
 
     // Create a simple wireless channel
     ///////////////////////////////////
-    Ptr<OkumuraHataPropagationLossModel> loss = CreateObject<OkumuraHataPropagationLossModel>();
-    loss->SetAttribute("Frequency", DoubleValue(865*1e6));
-    loss->SetAttribute("Environment", EnumValue(EnvironmentType::OpenAreasEnvironment));
-    //Ptr<LogDistancePropagationLossModel> loss = CreateObject<LogDistancePropagationLossModel>();
-    //loss->SetPathLossExponent(3.76);
-    //loss->SetReference(1, 7.7);
+    //Ptr<OkumuraHataPropagationLossModel> loss = CreateObject<OkumuraHataPropagationLossModel>();
+    //loss->SetAttribute("Frequency", DoubleValue(865*1e6));
+    //loss->SetAttribute("Environment", EnumValue(EnvironmentType::OpenAreasEnvironment));
+    Ptr<LogDistancePropagationLossModel> loss = CreateObject<LogDistancePropagationLossModel>();
+    loss->SetPathLossExponent(3.76);
+    loss->SetReference(1, 7.7);
 
     Ptr<PropagationDelayModel> delay = CreateObject<ConstantSpeedPropagationDelayModel>();
 
@@ -180,21 +177,8 @@ main(int argc, char* argv[])
     Ptr<ListPositionAllocator> positionAllocEd = CreateObject<ListPositionAllocator>();
 
     for(int i=0;i<nb_ED;i++) {
-        double r = dist;
-        double theta = rng->GetValue(0,1) * 2 * 3.14159265358979323846;
-        NS_LOG_INFO("Using position: "<<position);
-        if (position == "Random"){
-            r = dist * sqrt(rng->GetValue(0,1));
-        }
-        else if (position == "Fixed"){
-            r = dist;
-        } else {
-            NS_LOG_ERROR("PROBLEM: position must be Fixed or Random, user provided"<<position);
-        }
-        double x = r * cos(theta);
-        double y = r * sin(theta);
-        positionAllocEd->Add(Vector(x, y, 1.1));
-        NS_LOG_INFO("Add STA in ( "<< x <<" , "<<y<<" , 0 ) STA"<<endDevices.Get(i)->GetId());
+        positionAllocEd->Add(Vector(1000, 1000, 1.1));
+        NS_LOG_INFO("Add STA in ( "<< 0 <<" , "<<0<<" , 1.1 ) STA"<<endDevices.Get(i)->GetId());
     }
     mobilityEd.SetPositionAllocator(positionAllocEd);
     mobilityEd.SetMobilityModel("ns3::ConstantPositionMobilityModel");
@@ -247,7 +231,7 @@ main(int argc, char* argv[])
     /* Communication in the LoRa zone */
     for (int i=0; i<nb_ED; i++) {
         Ptr<ObjectCommApplicationMulticast> app = factory.Create<ObjectCommApplicationMulticast>();
-        double delay = useRNG==1 ? rng->GetInteger(10, 1000) : 10;
+        double delay = useRNG==1 ? rng->GetInteger(10, 1000) : 10+(i*5);
         app->SetStartTime(Seconds(delay));
         app->SetMCR(codingRatio);
         app->SetNode(endDevices.Get(i));
@@ -272,13 +256,10 @@ main(int argc, char* argv[])
 
     // Set spreading factors up
     std::vector<int> sf;
-    if(DR == -1){
-        sf = LorawanMacHelper::SetSpreadingFactorsUp(endDevices, gateways, channel);
-    } else {
-        std::vector<double> sfQuantity(6);
-        sfQuantity[5-DR] = 1;
-        sf = LorawanMacHelper::SetSpreadingFactorsGivenDistribution(endDevices, gateways,sfQuantity);
-    }
+
+    std::vector<double> sfQuantity = {0.25, 0.25, 0.25, 0.25, 0, 0};
+    sf = LorawanMacHelper::SetSpreadingFactorsGivenDistribution(endDevices, gateways,sfQuantity);
+    //sf = LorawanMacHelper::SetSpreadingFactorsUp(endDevices, gateways, channel);
     NS_LOG_INFO("SF INFO: ");
     for (size_t i=0;i<sf.size();i++)
         NS_LOG_INFO("SF INFO "<<i <<" "<<sf.at(i));
@@ -324,22 +305,12 @@ main(int argc, char* argv[])
     BasicEnergySourceHelper basicSourceHelper;
     LoraRadioEnergyModelHelper radioEnergyHelper;
 
-    // configure energy source
-/*    basicSourceHelper.Set("BasicEnergySourceInitialEnergyJ", DoubleValue(10000000)); // Energy in J
-    basicSourceHelper.Set("BasicEnergySupplyVoltageV", DoubleValue(3.3));
-
-    radioEnergyHelper.Set("StandbyCurrentA", DoubleValue(0.0014));
-    radioEnergyHelper.Set("TxCurrentA", DoubleValue(0.028));
-    radioEnergyHelper.Set("SleepCurrentA", DoubleValue(0.0000015));
-    radioEnergyHelper.Set("RxCurrentA", DoubleValue(0.0112));
-*/
-
     basicSourceHelper.Set("BasicEnergySourceInitialEnergyJ", DoubleValue(10000)); // Energy in J
     basicSourceHelper.Set("BasicEnergySupplyVoltageV", DoubleValue(3.0));
 
     radioEnergyHelper.Set("StandbyCurrentA", DoubleValue(0.0076));
     radioEnergyHelper.Set("TxCurrentA", DoubleValue(0.0245));
-    radioEnergyHelper.Set("SleepCurrentA", DoubleValue(0.0035));
+    radioEnergyHelper.Set("SleepCurrentA", DoubleValue(0)); //0.0035 removed for comparison of dynamic energy since the duration of scenarios is not the same
     radioEnergyHelper.Set("RxCurrentA", DoubleValue(0.0076));
 
 

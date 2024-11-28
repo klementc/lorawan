@@ -342,7 +342,7 @@ DownlinkFragment::Deserialize(Buffer::Iterator start)
     start.ReadU8();
 
     m_indexN = start.ReadU16();
-
+    fragment = std::vector<uint8_t>();
     while(! start.IsEnd()) {
         auto v = start.ReadU8();
         fragment.push_back(v);

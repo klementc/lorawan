@@ -162,6 +162,7 @@ class ConfirmedMessagesComponent : public NetworkControllerComponent
 
   private:
     double m_emittime = 0;
+    uint64_t m_nbRound = 0;
 };
 
 /**

@@ -198,7 +198,7 @@ LoraPhy::GetOnAirTime(Ptr<Packet> packet, LoraTxParameters txParams)
     double tPayload = payloadSymbNb * tSym;
 
     NS_LOG_DEBUG("Time computation: num = " << num << ", den = " << den << ", payloadSymbNb = "
-                                            << payloadSymbNb << ", tSym = " << tSym);
+                                            << payloadSymbNb << ", tSym = " << tSym <<" crc = "<<crc<<" CR = "<<(unsigned)txParams.codingRate);
     NS_LOG_DEBUG("tPreamble = " << tPreamble);
     NS_LOG_DEBUG("tPayload = " << tPayload);
     NS_LOG_DEBUG("Total time = " << tPreamble + tPayload);

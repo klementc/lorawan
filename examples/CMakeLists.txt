@@ -100,3 +100,19 @@ build_lib_example(
     ${libcore}
     ${liblorawan}
 )
+
+build_lib_example(
+  NAME fuota_4nodes_test
+  SOURCE_FILES  fuota_4nodes_test.cc
+  LIBRARIES_TO_LINK
+    ${libcore}
+    ${liblorawan}
+)
+
+build_lib_example(
+  NAME fuota_scale_test
+  SOURCE_FILES  fuota_scale_test.cc
+  LIBRARIES_TO_LINK
+    ${libcore}
+    ${liblorawan}
+)

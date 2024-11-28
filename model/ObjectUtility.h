@@ -12,15 +12,21 @@ int OBJECT_SIZE_BYTES = 0; // size of the object to send in bytes
  */
 double CR = 1;
 
-enum txParamsPolicy {ALL_MACHINES, FASTEST_MACHINES, THRESHOLD, FIXED_BY_USER};
+double inter_FUOTA_interval = 600; //3600*24;
+
+enum txParamsPolicy {FUOTA_BASELINE, ALL_MACHINES, FASTEST_MACHINES, THRESHOLD, FIXED_BY_USER};
 
 // use these to send downlink requests with a specific configuration using FIXED_BY_USER policy
-double FIXED_BY_USER_FREQ = 869.525; //9.525; //868.1;
+double FIXED_BY_USER_FREQ = 869.525;
 uint8_t FIXED_BY_USER_DR = 5;
 double FIXED_BY_USER_PLSIZE = 230;
 
+double EMIT_DELAY = 300;//3600*10;
+double DUR_POOLING = 300;//3600*6;
+double INIT_TIME = 0; // 3600
 
-double thresholdUpdate = 3; // number of days before update on threshold mode
+
+double thresholdUpdate = 4000; // number of days before update on threshold mode
 
 txParamsPolicy SELECTED_POLICY = txParamsPolicy::ALL_MACHINES;
 
