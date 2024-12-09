@@ -295,7 +295,8 @@ void ObjectCommApplicationMulticast::PeriodicUpdateScheduler()
     if (! multicastStarted && !(m_singleUpdate == true && m_lastUpdate.GetSeconds()>0)) {
         // schedule the init after a random delay to reduce the probability of collisions
         m_lastUpdate = Simulator::Now(); // to compute the threshold val
-        Simulator::Schedule(Seconds(m_rng->GetInteger(0, 1000)), &ObjectCommApplicationMulticast::SendMulticastInitRequest, this);
+        double delay = m_useRNG ? m_rng->GetInteger(0, 1000) : 0;
+        Simulator::Schedule(Seconds(delay), &ObjectCommApplicationMulticast::SendMulticastInitRequest, this);
     }
 
     Simulator::Schedule(Seconds(period-std::fmod(Simulator::Now().GetSeconds(),period)), &ObjectCommApplicationMulticast::PeriodicUpdateScheduler, this);
